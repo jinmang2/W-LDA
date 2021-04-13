@@ -1,1 +1,8 @@
-.vscode/*.json
+*.npz
+*.pyc
+*.txt
+/wikitext-103-v1
+/data
+/results
+/.vscode
+/.ipynb_checkpoints
