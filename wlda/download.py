@@ -13,14 +13,6 @@ from sklearn.feature_extraction.text import CountVectorizer
 import scipy.sparse as sparse
 
 
-def shuffle_and_dtype(vectors):
-    idx = np.arange(vectors.shape[0])
-    np.random.shuffle(idx)
-    vectors = vectors[idx]
-    vectors = sparse.csr_matrix(vectors, dtype=np.float32)
-    return vectors
-
-
 class LemmaTokenizer(object):
     def __init__(self):
         self.wnl = WordNetLemmatizer()
@@ -186,13 +178,17 @@ if __name__ == "__main__":
         for mode in ["train", "valid", "test"]:
             # Script to collection of documents
             docs = dl_manager.script_to_docs(os.getcwd(), f"wiki.{mode}.tokens")
-            # Lemmitize and Count
-            vectors = processor.vectorize(docs, mode=mode)
-            logging.info(f"{mode}_vec.shape: {vectors.shape}")
-            # Save vocab
-            processor.save_vocab()
-            # Shuffle the vectors
-            vectors = processor.shuffle(vectors)
-            # Save vectors
-            processor.save_npz(f"{dataset}_{mode}.csr.npz", vectors)
+            if mode == "valid":
+                print(docs[0][:10])
+                print(docs[-2][:10])
+                print(docs[-1][:10])
+            # # Lemmitize and Count
+            # vectors = processor.vectorize(docs, mode=mode)
+            # logging.info(f"{mode}_vec.shape: {vectors.shape}")
+            # # Save vocab
+            # processor.save_vocab()
+            # # Shuffle the vectors
+            # vectors = processor.shuffle(vectors)
+            # # Save vectors
+            # processor.save_npz(f"{dataset}_{mode}.csr.npz", vectors)
         logging.info("Done!")

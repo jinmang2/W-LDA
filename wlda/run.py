@@ -18,7 +18,14 @@ def main():
             json_file=os.path.abspath(sys.argv[1]))
     else:
         data_args, model_args, training_args = parser.parse_args_into_dataclasses()
-    print(data_args)
+    
+    # ==================================================
+    # First Step
+    # ==================================================
+    assert training_args["latent_noise"] >= 0 and trainig_args["latent_noise"] <= 1
+
+
+
 
 
 if __name__ == "__main__":
