@@ -178,17 +178,13 @@ if __name__ == "__main__":
         for mode in ["train", "valid", "test"]:
             # Script to collection of documents
             docs = dl_manager.script_to_docs(os.getcwd(), f"wiki.{mode}.tokens")
-            if mode == "valid":
-                print(docs[0][:10])
-                print(docs[-2][:10])
-                print(docs[-1][:10])
-            # # Lemmitize and Count
-            # vectors = processor.vectorize(docs, mode=mode)
-            # logging.info(f"{mode}_vec.shape: {vectors.shape}")
-            # # Save vocab
-            # processor.save_vocab()
-            # # Shuffle the vectors
-            # vectors = processor.shuffle(vectors)
-            # # Save vectors
-            # processor.save_npz(f"{dataset}_{mode}.csr.npz", vectors)
+            # Lemmitize and Count
+            vectors = processor.vectorize(docs, mode=mode)
+            logging.info(f"{mode}_vec.shape: {vectors.shape}")
+            # Save vocab
+            processor.save_vocab()
+            # Shuffle the vectors
+            vectors = processor.shuffle(vectors)
+            # Save vectors
+            processor.save_npz(f"{dataset}_{mode}.csr.npz", vectors)
         logging.info("Done!")
