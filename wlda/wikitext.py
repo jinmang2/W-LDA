@@ -64,7 +64,7 @@ class Wikitext(datasets.GeneratorBasedBuilder):
             }
         )
         return datasets.DatasetInfo(
-            description=_DESCRIPTIOfsdN,
+            description=_DESCRIPTION,
             features=features,
             supervised_keys=None,
             homepage=_URL,

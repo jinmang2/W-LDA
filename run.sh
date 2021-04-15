@@ -1,0 +1,20 @@
+python ./new/run.py \
+--domain wikitext-103 \
+--description wikitext103_paper \
+--model dirichlet \
+--ndim_x 20000 \
+--ndim_y 50 \
+--optim Adam \
+--enc_n_layer 1 \
+--enc_nonlinearity softrelu \
+--dec_n_hidden 20000 \
+--dec_n_layer 1 \
+--dis_n_layer 1 \
+--verbose True \
+--eval_stats_every 10 \
+--adverse True \
+--update_enc True \
+--train_mode mmd \
+--batch_size 360 \
+--learning_rate 0.002 \
+--kernel_alpha 1

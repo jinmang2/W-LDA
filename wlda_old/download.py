@@ -149,9 +149,9 @@ if __name__ == "__main__":
 
     nltk.download('wordnet')
 
-    is_download = False
-    rmtree = False
-    dataset = "wikitext-103"
+    is_download = True
+    rmtree = True
+    dataset = "wikitext"
     website = "https://s3.amazonaws.com/research.metamind.io/wikitext/wikitext-103-v1.zip"
 
     processor = ScikitProcessor(

@@ -1,10 +1,30 @@
-import sys
 from args import (
-    MyArgumentParser, 
-    DataArguments, 
-    ModelArguments, 
+    MyArgumentParser,
+    DataArguments,
+    ModelArguments,
     TrainingArguments
 )
+import sys
+import logging
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+stream_hander = logging.StreamHandler()
+stream_hander.setFormatter(formatter)
+
+logger.addHandler(stream_hander)
+
+try:
+    from datasets import load_dataset
+    logger.info("import `load_dataset` from `huggingface.datasets`")
+except ModuleNotFoundError as e:
+    from .download import load_dataset
+    logger.info("import `load_dataset` from `wlda.download`")
 
 
 def main():
@@ -18,14 +38,13 @@ def main():
             json_file=os.path.abspath(sys.argv[1]))
     else:
         data_args, model_args, training_args = parser.parse_args_into_dataclasses()
-    
-    # ==================================================
-    # First Step
-    # ==================================================
-    assert training_args["latent_noise"] >= 0 and trainig_args["latent_noise"] <= 1
 
-
-
+    data = load_dataset(
+        path="wikitext.py",
+        name="wikitext-103-v1",
+        cache_dir="data",
+    )
+    print(data)
 
 
 if __name__ == "__main__":
