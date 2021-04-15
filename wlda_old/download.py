@@ -170,7 +170,7 @@ if __name__ == "__main__":
             dl_manager.download(website)
         
         # Move to ./data/{dataset}/{dataset}
-        os.chdir(os.path.join(os.getcwd(), dataset))
+        os.chdir(os.path.join(os.getcwd(), "wikitext-103"))
 
         logging.info(
             "Lemmatizing and counting, this may take a few minutes...")

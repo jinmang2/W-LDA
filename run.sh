@@ -1,14 +1,16 @@
-python ./new/run.py \
+python ./wlda/run.py \
 --domain wikitext-103 \
 --description wikitext103_paper \
 --model dirichlet \
 --ndim_x 20000 \
 --ndim_y 50 \
 --optim Adam \
---enc_n_layer 1 \
+--enc_n_hidden 100 100 \
+--enc_n_layer -1 \
 --enc_nonlinearity softrelu \
 --dec_n_hidden 20000 \
---dec_n_layer 1 \
+--dec_n_layer -1 \
+--dis_n_hidden 50 50 \
 --dis_n_layer 1 \
 --verbose True \
 --eval_stats_every 10 \

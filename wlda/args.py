@@ -1,6 +1,8 @@
+import re
 import sys
-from enum import Enum
+import copy
 from pathlib import Path
+from enum import Enum
 import dataclasses
 from dataclasses import dataclass, field
 from argparse import ArgumentParser, ArgumentTypeError
@@ -9,6 +11,10 @@ from typing import Any, Iterable, List, NewType, Optional, Tuple, Union
 
 DataClass = NewType("DataClass", Any)
 DataClassType = NewType("DataClassType", Any)
+
+
+def lambda_field(default, **kwargs):
+    return field(default_factory=lambda: copy.copy(default))
 
 
 # From https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
@@ -37,14 +43,16 @@ class DataArguments:
         default=10, metadata={"help": "max number of labeled samples per topic"})
     label_seed : bool = field(
         default=None, metadata={"help": "random seed for subsampling the labeled dataset"})
+    saveto: str = field(
+        default='', metadata={"help": "path prefix for saving results"})
 
 
 @dataclass
 class ModelArguments:
     model : str = field(
         default='dirichlet', metadata={"help": "model to use"})
-    enc_n_hidden: int = field(
-        default=128, metadata={"help": "# of hidden units for encoder or list of hiddens for each layer"})
+    enc_n_hidden: List[int] = lambda_field(
+        default=[128], metadata={"help": "# of hidden units for encoder or list of hiddens for each layer"})
     enc_n_layer: int = field(
         default=1, metadata={"help": "# of hidden layers for encode"})
     enc_nonlinearity: str = field(
@@ -53,9 +61,9 @@ class ModelArguments:
         default='', metadata={"help": "file path for encoder weights"})
     enc_freeze: bool = field(
         default=False, metadata={"help": "whether to freeze the encoder weights"})
-    latent_nonlinearity: str = field(
-        default='', metadata={"help": "type of to use prior to decoder"})
-    dec_n_hidden: int = field(
+    latent_nonlinearity: str = lambda_field(
+        default=[128], metadata={"help": "type of to use prior to decoder"})
+    dec_n_hidden: List[int] = field(
         default=128, metadata={"help": "# of hidden units for decoder or list of hiddens for each layer"})
     dec_n_layer: int = field(
         default=0, metadata={"help": "# of hidden layers for decoder"})
@@ -67,8 +75,10 @@ class ModelArguments:
         default=False, metadata={"help": "whether to freeze the decoder weights"})
     dec_word_dist: bool = field(
         default=False, metadata={"help": "whether to init decoder weights with training set word distributions"})
-    dis_n_hidden: int = field(
-        default=128, metadata={"help": "# of hidden units for encoder or list of hiddens for each layer"})
+    latent_noise: float = field(
+        default=0.0, metadata={"help": "proportion of dirichlet noise added to the latent vector after softmax"})
+    dis_n_hidden: List[int] = lambda_field(
+        default=[128], metadata={"help": "# of hidden units for encoder or list of hiddens for each layer"})
     dis_n_layer: int = field(
         default=1, metadata={"help": "# of hidden layers for encode"})
     dis_nonlinearity: str = field(
@@ -109,10 +119,8 @@ class TrainingArguments:
         default=256, metadata={"help": "dimensionality of y - topic indicator"})
     ndim_x : int = field(
         default=2, metadata={"help": "dimensionality of p(x) - data distribution"})
-    saveto : str = field(
-        default='', metadata={"help": "path prefix for saving results"})
-    gpu : int = field(
-        default=-2, metadata={"help": "if/which gpu to use (-1: all, -2: None)"})
+    use_cuda : bool = field(
+        default=True, metadata={"help": "Wheather to use gpu"})
     hybridize : bool = field(
         default=False, metadata={"help": "declaritive True (hybridize) or imperative False"})
     full_npmi : bool = field(
@@ -141,8 +149,6 @@ class TrainingArguments:
         default=-1.0, metadata={"help": "dropout probability in encoder"})
     l2_alpha : float = field(
         default=-1.0, metadata={"help": "alpha multipler for L2 regularization on latent vector"})
-    latent_noise : float = field(
-        default=0.0, metadata={"help": "proportion of dirichlet noise added to the latent vector after softmax"})
     topic_decoder_weight : bool = field(
         default=False, metadata={"help": "extract topic words based on decoder weights or decoder outputs"})
     retrain_enc_only : bool = field(
