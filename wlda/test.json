@@ -1,0 +1,5 @@
+{
+    "domain": "wikitext-103",
+    "description": "wikitext103_paper",
+    "enc_n_hidden": [100, 100]
+}

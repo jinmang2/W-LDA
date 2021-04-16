@@ -19,4 +19,7 @@ python ./wlda/run.py \
 --train_mode mmd \
 --batch_size 360 \
 --learning_rate 0.002 \
---kernel_alpha 1
+--kernel_alpha 1 \
+--max_iter 11 \
+--dirich_alpha 0.1 \
+--latent_noise 0.2 \

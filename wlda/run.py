@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from args import (
+from .args import (
     MyArgumentParser,
     DataArguments,
     ModelArguments,
@@ -31,20 +31,35 @@ logger.addHandler(stream_hander)
 from datasets import load_dataset
 
 
+def prepare_experiments():
+    pass
+
+
 def main():
+    """
+    5 Steps
+    (1) Read arguments from json or shell script
+    (2) Check and Prepare arguments for experiments
+    (3) Download or Caching Data for experiments
+    (4) If Statistical Methodology, cache the features
+        else, tokenize input text(sentences or documents)
+    (5) Define `Trainer`, `Model` for experiments
+    (6) Run experiments or Execute test/inference script
+    (7) Visualize or Reports the results
+    """
     parser = MyArgumentParser(
         (DataArguments, ModelArguments, TrainingArguments)
     )
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        # If we pass only one argument to the script and it's the path to a json file,
-        # let's parse it to get our arguments.
+        # read args from json file
         data_args, model_args, training_args = parser.parse_json_file(
             json_file=os.path.abspath(sys.argv[1]))
     else:
+        # read args from shell script or real arguments
         data_args, model_args, training_args = parser.parse_args_into_dataclasses()
 
     # (1) Check arguments
-    assert training_args.latent_noise >= 0 and training_args.latent_noise <= 1
+    assert model_args.latent_noise >= 0 and model_args.latent_noise <= 1
     # description은 domain + algorithm + model + (unsup or semisup or sup)
 
     if not data_args.saveto:
@@ -55,14 +70,11 @@ def main():
     now_date = ""
     saveto = data_args.saveto + "/" + now_date
 
-    print(model_args)
-
     if not os.path.exists(saveto):
         os.makedirs(saveto)
         os.makedirs(saveto + '/weights/encoder')
         os.makedirs(saveto + '/weights/decoder')
         os.makedirs(saveto + '/weights/discriminator_y')
-        os.makedirs(saveto + '/weights/discriminator_z')
         os.makedirs(saveto + "/args")
     
     data_args.saveto = saveto

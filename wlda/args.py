@@ -1,6 +1,7 @@
 import re
 import sys
 import copy
+import json
 from pathlib import Path
 from enum import Enum
 import dataclasses
@@ -11,10 +12,6 @@ from typing import Any, Iterable, List, NewType, Optional, Tuple, Union
 
 DataClass = NewType("DataClass", Any)
 DataClassType = NewType("DataClassType", Any)
-
-
-def lambda_field(default, **kwargs):
-    return field(default_factory=lambda: copy.copy(default))
 
 
 # From https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
@@ -31,17 +28,21 @@ def string_to_bool(v):
         )
 
 
+def lambda_field(default, **kwargs):
+    return field(default_factory=lambda: copy.copy(default))
+
+
 @dataclass
 class DataArguments:
-    domain : str = field(
+    domain: str = field(
         default='twenty_news', metadata={"help": "domain to run"})
-    data_path : str = field(
+    data_path: str = field(
         default='', metadata={"help": "file path for dataset"})
-    max_labels : int = field(
+    max_labels: int = field(
         default=100, metadata={"help": "max number of topics to specify as labels for a single training document"})
-    max_labeled_samples : int = field(
+    max_labeled_samples: int = field(
         default=10, metadata={"help": "max number of labeled samples per topic"})
-    label_seed : bool = field(
+    label_seed: bool = field(
         default=None, metadata={"help": "random seed for subsampling the labeled dataset"})
     saveto: str = field(
         default='', metadata={"help": "path prefix for saving results"})
@@ -49,7 +50,7 @@ class DataArguments:
 
 @dataclass
 class ModelArguments:
-    model : str = field(
+    model: str = field(
         default='dirichlet', metadata={"help": "model to use"})
     enc_n_hidden: List[int] = lambda_field(
         default=[128], metadata={"help": "# of hidden units for encoder or list of hiddens for each layer"})
@@ -91,73 +92,76 @@ class ModelArguments:
         default=False, metadata={"help": "whether to freeze the encoder weights"})
     include_weights: str = field(
         default='', metadata={"help": "weights to train on (default is all weights) -- all others are kept fixed; Ex: E.z_encoder D.decoder"})
+    dirich_alpha: float = field(
+        default=1e-1, metadata={"help": "param for Dirichlet prior"})
+    ndim_y: int = field(
+        default=256, metadata={"help": "dimensionality of y - topic indicator"})
+    ndim_x: int = field(
+        default=2, metadata={"help": "dimensionality of p(x) - data distribution"})
 
 
 @dataclass
 class TrainingArguments:
-    description : str = field(
+    description: str = field(
         default='', metadata={"help": "description for the experiment"})
-    algorithm : str = field(
+    algorithm: str = field(
         default='standard', metadata={"help": "algorithm to use for training: standard"})
-    batch_size : int = field(
+    batch_size: int = field(
         default=256, metadata={"help": "batch_size for training"})
-    optim : str = field(
+    optim: str = field(
         default='Adam', metadata={"help": "encoder training algorithm"})
-    learning_rate : float = field(
+    learning_rate: float = field(
         default=1e-4, metadata={"help": "learning rate"})
-    weight_decay : float = field(
+    weight_decay: float = field(
         default=0., metadata={"help": "weight decay"})
-    epsilon : float = field(
+    epsilon: float = field(
         default=1e-8, metadata={"help": "epsilon param for Adam"})
-    max_iter : int = field(
+    max_iter: int = field(
         default=50001, metadata={"help": "max # of training iterations"})
-    train_stats_every : int = field(
+    train_stats_every: int = field(
         default=100, metadata={"help": "skip train_stats_every iterations between recording training stats"})
-    eval_stats_every : int = field(
+    eval_stats_every: int = field(
         default=100, metadata={"help": "skip eval_stats_every iterations between recording evaluation stats"})
-    ndim_y : int = field(
-        default=256, metadata={"help": "dimensionality of y - topic indicator"})
-    ndim_x : int = field(
-        default=2, metadata={"help": "dimensionality of p(x) - data distribution"})
-    use_cuda : bool = field(
+    use_cuda: bool = field(
         default=True, metadata={"help": "Wheather to use gpu"})
-    hybridize : bool = field(
-        default=False, metadata={"help": "declaritive True (hybridize) or imperative False"})
-    full_npmi : bool = field(
+    full_npmi: bool = field(
         default=False, metadata={"help": "whether to compute NPMI for full trajectory"})
-    eval_on_test : bool = field(
+    eval_on_test: bool = field(
         default=False, metadata={"help": "whether to evaluate on the test set (True) or validation set (False)"})
-    verbose : bool = field(
+    verbose: bool = field(
         default=True, metadata={"help": "whether to print progress to stdout"})
-    dirich_alpha : float = field(
-        default=1e-1, metadata={"help": "param for Dirichlet prior"})
-    adverse : bool = field(
+    adverse: bool = field(
         default=True, metadata={"help": "whether to turn on adverserial training (MMD or GAN). set to False if only train auto-encoder"})
-    update_enc : bool = field(
+    update_enc: bool = field(
         default=True, metadata={"help": "whether to update encoder for unlabed_train_op()"})
-    labeled_loss_lambda : float = field(
+    labeled_loss_lambda: float = field(
         default=1.0, metadata={"help": "param for Dirichlet noise for label"})
-    train_mode : str = field(
+    train_mode: str = field(
         default='mmd', metadata={"help": "set to mmd or adv (for GAN)"})
-    kernel_alpha : float = field(
+    kernel_alpha: float = field(
         default=1.0, metadata={"help": "param for information diffusion kernel"})
-    recon_alpha : float = field(
+    recon_alpha: float = field(
         default=-1.0, metadata={"help": "multiplier of the reconstruction loss when combined with mmd loss"})
-    recon_alpha_adapt : float = field(
+    recon_alpha_adapt: float = field(
         default=-1.0, metadata={"help": "adaptively change recon_alpha so that [total loss = mmd + recon_alpha_adapt * recon loss"})
-    dropout_p : float = field(
+    dropout_p: float = field(
         default=-1.0, metadata={"help": "dropout probability in encoder"})
-    l2_alpha : float = field(
+    l2_alpha: float = field(
         default=-1.0, metadata={"help": "alpha multipler for L2 regularization on latent vector"})
-    topic_decoder_weight : bool = field(
+    topic_decoder_weight: bool = field(
         default=False, metadata={"help": "extract topic words based on decoder weights or decoder outputs"})
-    retrain_enc_only : bool = field(
+    retrain_enc_only: bool = field(
         default=False, metadata={"help": "only retrain the encoder for reconstruction loss"})
-    l2_alpha_retrain : float = field(
+    l2_alpha_retrain: float = field(
         default=0.1, metadata={"help": "alpha multipler for L2 regularization on encoder output during retraining"})
+    past_index: int = field(
+        default=-1, metadata={"help": ""})
 
 
 class MyArgumentParser(ArgumentParser):
+    """
+    See @ https://github.com/huggingface/transformers/blob/master/src/transformers/hf_argparser.py
+    """
 
     dataclass_types: Iterable[DataClassType]
 

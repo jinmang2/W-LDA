@@ -1,12 +1,13 @@
 from collections import OrderedDict
 from typing import Optional, List, Dict, Union
 
+import numpy as np
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from core import Net, Dense
-
+from .core import Net, Dense
 from ..args import ModelArguments
 
 
@@ -147,13 +148,20 @@ class WassersteinAutoEncoder(Net):
         if config.dec_freeze:
             self.decoder.freeze_params()
 
-    def forward(self, docs: torch.Tensor) -> torch.Tensor:
+    def forward(self, docs: torch.Tensor, enc_out_corrupt: bool = False) -> torch.Tensor:
         y_onehot_u = self.Encoder(docs)
         y_onehot_u_softmax = torch.softmax(y_onehot_u)
-        if self.training and self.config.latent_noise > 0:
-            continue
-        x_reconstructoin_u = self.Decoder(y_onehot_u_softmax)
-        return x_reconstructoin_u
+        if enc_out_corrupt and self.training:
+            # @TODO: Consifer ``torch.distrubitions.dirichlet.Distribution```
+            alpha = self.config.latent_noise
+            y_noise = np.random.dirichlet(
+                np.ones(self.config.ndim_y) * self.config.dirich_alpha,
+                size=docs.shape[0])
+            y_noise = torch.FLoatTensor(y_noise)
+            # Mix-up
+            y_onehot_u_softmax = (1 - alpha) * y_onehot_u_softmax + alpha * y_noise
+        x_reconstruction_u = self.Decoder(y_onehot_u_softmax)
+        return x_reconstruction_u
 
 
 

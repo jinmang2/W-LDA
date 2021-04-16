@@ -1,5 +1,3 @@
-from abc import ABC
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -35,6 +33,7 @@ class Dense(nn.Linear):
     """
     A Linear class with non-linearity (mxnet style)
     """
+
     def __init__(self, *args, non_linearity="sigmoid", **kwargs):
         super().__init__(*args, **kwargs)
         self.activation = NON_LINEARITY.get(non_linearity, nn.Identity)
