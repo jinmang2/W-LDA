@@ -47,6 +47,16 @@ def main():
     (6) Run experiments or Execute test/inference script
     (7) Visualize or Reports the results
     """
+
+    # @TODO data_args의 saveto를 training_args의 output_dir로 수정할 것.
+    # @TODO data_args의 label_seed 필요한지 check, training_args에 seed 추가
+    # @TODO training_args에 remove_unused_columns 추가
+    # @TODO training_args에 label_smoothing_factor 추가
+    # @TODO 필요한가...? training_args에 label_names 추가
+    # @TODO training_args에 batch_size 세분화
+    # @TODO training_args에 dataloader_drop_last, dataloader_num_workers 추가
+    # @TODO training_args에 warmup, 기타 optim 관련 params 추가하기
+
     parser = MyArgumentParser(
         (DataArguments, ModelArguments, TrainingArguments)
     )
