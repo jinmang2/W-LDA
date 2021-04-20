@@ -56,6 +56,11 @@ def main():
     # @TODO training_args에 batch_size 세분화
     # @TODO training_args에 dataloader_drop_last, dataloader_num_workers 추가
     # @TODO training_args에 warmup, 기타 optim 관련 params 추가하기
+    # @TODO training_args에 gradient accumulation steps 추가
+    # @TODO training_args에 max_steps추가
+    # @TODO trainig_args에 device도 추가되어야 함
+    # @TODO training_args에 ignore_data_skip도 추가
+    # @TODO training_args에 그거 gradient clipping 추가
 
     parser = MyArgumentParser(
         (DataArguments, ModelArguments, TrainingArguments)

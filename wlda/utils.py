@@ -1,7 +1,9 @@
 import os
 import sys
+import time
 import random
 import importlib.util
+import threading
 import numpy as np
 import torch
 from dataclasses import dataclass
@@ -104,3 +106,20 @@ class LabelSmoother:
         # Take the mean over the label dimentions, then divide the number of active elements (i.e. not-padded)
         smoothed_loss = log_probs.mean(dim=-1).sum() / (padding_mask.numel() - padding_mask.long().sum())
         return (1 - self.epsilon) * model_loss + self.epsilon * smoothed_loss
+
+
+def speed_metrics(split, start_time, num_samples=None):
+    """ Measure and return speed performance metrics """
+    runtime = time.time() - start_time
+    result =  {f"{split}_runtime": round(runtime, 4)}
+    if num_samples is not None:
+        samples_per_second = 1 / (runtime / num_samples)
+        result[f"{split}_samples_per_second"] = round(samples_per_second, 3)
+    return result
+
+
+def nested_detach(tensors):
+    "Detach `tensors` (even if it's a nested list/tuple of tensors)."
+    if isinstance(tensors, (list, tuple)):
+        return type(tensors)(nested_detach(t) for t in tensors)
+    return tensors.detach()
