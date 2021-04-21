@@ -1,5 +1,6 @@
 {
     "domain": "wikitext-103",
     "description": "wikitext103_paper",
-    "enc_n_hidden": [100, 100]
+    "enc_n_hidden": [100, 100],
+    "output_dir": "results"
 }

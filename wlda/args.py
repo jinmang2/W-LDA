@@ -1,3 +1,4 @@
+import os
 import re
 import sys
 import copy
@@ -8,6 +9,9 @@ import dataclasses
 from dataclasses import dataclass, field
 from argparse import ArgumentParser, ArgumentTypeError
 from typing import Any, Iterable, List, NewType, Optional, Tuple, Union
+
+
+from .hf_utils import TrainingArguments
 
 
 DataClass = NewType("DataClass", Any)
@@ -33,24 +37,8 @@ def lambda_field(default, **kwargs):
 
 
 @dataclass
-class DataArguments:
-    domain: str = field(
-        default='twenty_news', metadata={"help": "domain to run"})
-    data_path: str = field(
-        default='', metadata={"help": "file path for dataset"})
-    max_labels: int = field(
-        default=100, metadata={"help": "max number of topics to specify as labels for a single training document"})
-    max_labeled_samples: int = field(
-        default=10, metadata={"help": "max number of labeled samples per topic"})
-    label_seed: bool = field(
-        default=None, metadata={"help": "random seed for subsampling the labeled dataset"})
-    saveto: str = field(
-        default='', metadata={"help": "path prefix for saving results"})
-
-
-@dataclass
-class ModelArguments:
-    model: str = field(
+class AdvModelArguments:
+    model_name_or_path: str = field(
         default='dirichlet', metadata={"help": "model to use"})
     enc_n_hidden: List[int] = lambda_field(
         default=[128], metadata={"help": "# of hidden units for encoder or list of hiddens for each layer"})
@@ -101,33 +89,25 @@ class ModelArguments:
 
 
 @dataclass
-class TrainingArguments:
+class AdvTrainingArguments(TrainingArguments):
+    domain: str = field(
+        default='wikitext-103', metadata={"help": "domain to run"})
     description: str = field(
-        default='', metadata={"help": "description for the experiment"})
-    algorithm: str = field(
-        default='standard', metadata={"help": "algorithm to use for training: standard"})
-    batch_size: int = field(
-        default=256, metadata={"help": "batch_size for training"})
-    optim: str = field(
+        default='', metadata={"help": "description for the experiment"})        
+    data_path: str = field(
+        default='', metadata={"help": "file path for dataset"})
+    max_labels: int = field(
+        default=100, metadata={"help": "max number of topics to specify as labels for a single training document"})
+    max_labeled_samples: int = field(
+        default=10, metadata={"help": "max number of labeled samples per topic"})
+    optimizer: str = field(
         default='Adam', metadata={"help": "encoder training algorithm"})
     learning_rate: float = field(
         default=1e-4, metadata={"help": "learning rate"})
-    weight_decay: float = field(
-        default=0., metadata={"help": "weight decay"})
     epsilon: float = field(
         default=1e-8, metadata={"help": "epsilon param for Adam"})
-    max_iter: int = field(
-        default=50001, metadata={"help": "max # of training iterations"})
-    train_stats_every: int = field(
-        default=100, metadata={"help": "skip train_stats_every iterations between recording training stats"})
-    eval_stats_every: int = field(
-        default=100, metadata={"help": "skip eval_stats_every iterations between recording evaluation stats"})
-    use_cuda: bool = field(
-        default=True, metadata={"help": "Wheather to use gpu"})
     full_npmi: bool = field(
         default=False, metadata={"help": "whether to compute NPMI for full trajectory"})
-    eval_on_test: bool = field(
-        default=False, metadata={"help": "whether to evaluate on the test set (True) or validation set (False)"})
     verbose: bool = field(
         default=True, metadata={"help": "whether to print progress to stdout"})
     adverse: bool = field(
@@ -154,8 +134,10 @@ class TrainingArguments:
         default=False, metadata={"help": "only retrain the encoder for reconstruction loss"})
     l2_alpha_retrain: float = field(
         default=0.1, metadata={"help": "alpha multipler for L2 regularization on encoder output during retraining"})
-    past_index: int = field(
-        default=-1, metadata={"help": ""})
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.output_dir = os.path.join(self.output_dir, self.description)
 
 
 class MyArgumentParser(ArgumentParser):

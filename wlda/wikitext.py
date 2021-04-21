@@ -118,8 +118,9 @@ class Wikitext(datasets.GeneratorBasedBuilder):
                 elif line:
                     sample = sample + " " + line
             yield idx, {"text": sample}
-                      
-    def is_document_start(self, line):
+
+    @staticmethod                     
+    def is_document_start(line):
         if len(line) < 4:
             return False
         if line[0] is "=" and line[-1] is "=":

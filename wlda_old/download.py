@@ -13,10 +13,11 @@ from sklearn.feature_extraction.text import CountVectorizer
 import scipy.sparse as sparse
 
 
-class LemmaTokenizer(object):
+class LemmaTokenizer:
+    _token_pattern = re.compile(r"(?u)\b\w\w+\b")
+
     def __init__(self):
         self.wnl = WordNetLemmatizer()
-        self._token_pattern = re.compile(r"(?u)\b\w\w+\b")
 
     @property
     def token_pattern(self):

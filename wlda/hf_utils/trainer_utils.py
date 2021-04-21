@@ -6,51 +6,9 @@ import importlib.util
 import threading
 import numpy as np
 import torch
+from enum import Enum
 from dataclasses import dataclass
-
-
-if sys.version_info < (3, 8):
-    import importlib_metadata
-else:
-    import importlib.metadata as importlib_metadata
-
-
-ENV_VARS_TRUE_VALUES = {"1", "ON", "YES"}
-ENV_VARS_TRUE_AND_AUTO_VALUES = ENV_VARS_TRUE_VALUES.union({"AUTO"})
-
-USE_TF = os.environ.get("USE_TF", "AUTO").upper()
-
-if USE_TORCH in ENV_VARS_TRUE_AND_AUTO_VALUES and USE_TF not in ENV_VARS_TRUE_VALUES:
-    _torch_available = importlib.util.find_spec("torch") is not None
-    if _torch_available:
-        try:
-            _torch_version = importlib_metadata.version("torch")
-            logger.info(f"PyTorch version {_torch_version} available.")
-        except importlib_metadata.PackageNotFoundError:
-            _torch_available = False
-else:
-    logger.info("Disabling PyTorch because USE_TF is set")
-    _torch_available = False
-
-
-_datasets_available = importlib.util.find_spec("datasets") is not None
-try:
-    # Check we're not importing a "datasets" directory somewhere but the actual library by trying to grab the version
-    # AND checking it has an author field in the metadata that is HuggingFace.
-    _ = importlib_metadata.version("datasets")
-    _datasets_metadata = importlib_metadata.metadata("datasets")
-    if _datasets_metadata.get("author", "") != "HuggingFace Inc.":
-        _datasets_available = False
-except importlib_metadata.PackageNotFoundError:
-    _datasets_available = False
-
-
-def is_torch_available():
-    return _torch_available
-
-
-def is_datasets_available():
-    return _datasets_available
+from typing import NamedTuple, Union, Tuple, Optional, Dict
 
 
 def set_seed(seed: int):
@@ -123,3 +81,22 @@ def nested_detach(tensors):
     if isinstance(tensors, (list, tuple)):
         return type(tensors)(nested_detach(t) for t in tensors)
     return tensors.detach()
+
+
+class ExplicitEnum(Enum):
+
+    @classmethod
+    def _missing_(cls, value):
+        raise ValueError(
+            "%r is not a valid %s, please seelct one of %s"
+            % (value, cls.__name__, str(list(cls._value2member_map_.keys())))
+        )
+
+
+class SchedulerType(ExplicitEnum):
+    LINEAR = "linear"
+    COSINE = "cosine"
+    COSINE_WITH_RESTARTS = "cosine_with_restarts"
+    POLYNOMIAL = "polynomial"
+    CONSTANT = "constant"
+    CONSTANT_WITH_WARMUP = "constant_with_warmup"

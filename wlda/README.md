@@ -9,3 +9,13 @@
 
 ### Data, Compute 관리
 - Pytorch Lightning의 Trainer class를 참고하여 개발
+
+### Dependencies
+- numpy
+- torch
+- dataclasse
+- scipy
+
+### Reference design
+- transformers
+- datasets

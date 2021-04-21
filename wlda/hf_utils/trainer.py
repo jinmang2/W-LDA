@@ -8,21 +8,18 @@ from torch.utils.data.dataset import Dataset
 from torch.utils.data.sampler import Sampler, RandomSampler, SequentialSampler
 from torch.utils.data.dataloader import DataLoader
 
-from .optimization import Adafactor, AdamW, get_scheduler
-from .args import TrainingArguments
-from .utils import (
+from .file_utils import is_datasets_available, WEIGHTS_NAME
+from .training_args import TrainingArguments
+from .trainer_utils import (
     EvalPrediction,
     PredictionOutput,
     TrainOutput,
     set_seed,
-    is_datasets_available,
     LabelSmoother,
     speed_metrics,
     nested_detach,
 )
 
-
-WEIGHTS_NAME = "pytorch_model.bin"
 
 # from `transformers.data.data_collator.py`
 InputDataClass = NewType("InputDataClass", Any)
@@ -53,7 +50,6 @@ class Trainer:
         data_collator: Optional[DataCollator] = None,
         train_dataset: Optional[Dataset] = None,
         eval_dataset: Optional[Dataset] = None,
-        tokenizer: Optional["PreTrainedTokenizerBase"] = None,
         compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
         optimizer: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None):
     ):
@@ -64,17 +60,11 @@ class Trainer:
         self.data_collator = data_collator # @TODO Default Data Collator 추가
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
-        self.tokenizer = tokenizer
 
-        self.args._n_gpu = 1
-
-        self.model_wrapped = model
         self.model = model
 
         self.compute_metrics = compute_metrics
         self.optimizer, self.lr_scheduler = optimizers
-
-        os.makedirs(self.args.output_dir, exist_ok=True)
 
         if (not callable(self.data_collator) and 
             callable(getattr(self.data_collator, "collate_batch", None))):
@@ -102,7 +92,6 @@ class Trainer:
             self.label_smoother = None
 
         default_label_names = (
-            # ["start_positions", "end_positions"] # for QA
             ["labels"]
         )
         self.label_names = default_label_names if self.args.label_names is None else self.args.label_names
@@ -184,44 +173,22 @@ class Trainer:
         return len(dataloader.dataset)
 
     def train(self):
-        train_dataset_is_sized = isinstance(self.train_dataloader, collections.abc.Sized)
         train_dataloader = self.get_train_dataloader()
         max_steps = self.args.max_steps
         num_train_epochs = 1
-        num_update_steps_per_epoch = max_steps
-        
-        total_train_batch_size = self.args.train_batch_size
-
-        num_examples = (
-            self.num_examples(train_dataloader)
-            if train_dataset_is_sized
-            else total_train_batch_size * self.args.max_steps
-        )
-
-        print("***** Running training *****")
-        print(f"  Num examples = {num_examples}")
-        print(f"  Num Epochs = {num_train_epochs}")
-        print(
-            f"  Instantaneous batch size per device = {self.args.per_device_train_batch_size}")
-        print(
-            f"  Total train batch size (w. parallel, distributed & accumulation) = {total_train_batch_size}")
-        print(f"  Total optimization steps = {max_steps}")
+        num_examples = self.num_examples(train_dataloader)
 
         # @TODO Checkpoint Learning + optimizer 불러오기도 포함
         start_time = time.time()
-        epochs_trained = 0
-        steps_trained_in_current_epoch = 0
 
-        tr_loss = torch.tensor(0.0).to(self.args.device)
-
-        self.model.zero_grad()
+        model = self.model
+        model.zero_grad()
 
         for epoch in range(epochs_trained, num_train_epochs):
-            step_in_epoch = len(train_dataloader) if train_dataset_is_sized else self.args.max_steps
             for step, inputs in enumerate(train_dataloader):
                 # 여기에 checkpoint 이전 step은 건너뛰기 코드 추가!
                 # gradient accumulation 추가
-                tr_loss += self.training_step(model, inputs)
+                self.training_step(model, inputs)
                 # Gradient Clipping
                 torch.nn.utils.clip_grad_norm_(
                     model.parameters(),
