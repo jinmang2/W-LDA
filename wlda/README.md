@@ -13,8 +13,9 @@
 ### Dependencies
 - numpy
 - torch
-- dataclasse
+- dataclasses
 - scipy
+- nltk
 
 ### Reference design
 - transformers
