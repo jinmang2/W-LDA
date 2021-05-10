@@ -37,12 +37,12 @@ def lambda_field(default, **kwargs):
 
 
 @dataclass
-class AdvModelArguments:
+class ModelArguments:
     model_name_or_path: str = field(
         default='dirichlet', metadata={"help": "model to use"})
-    enc_n_hidden: List[int] = lambda_field(
+    enc_n_hiddens: List[int] = lambda_field(
         default=[128], metadata={"help": "# of hidden units for encoder or list of hiddens for each layer"})
-    enc_n_layer: int = field(
+    enc_n_layers: int = field(
         default=1, metadata={"help": "# of hidden layers for encode"})
     enc_nonlinearity: str = field(
         default='sigmoid', metadata={"help": "type of nonlinearity for encoder"})
@@ -52,9 +52,9 @@ class AdvModelArguments:
         default=False, metadata={"help": "whether to freeze the encoder weights"})
     latent_nonlinearity: str = lambda_field(
         default=[128], metadata={"help": "type of to use prior to decoder"})
-    dec_n_hidden: List[int] = field(
+    dec_n_hiddens: List[int] = field(
         default=128, metadata={"help": "# of hidden units for decoder or list of hiddens for each layer"})
-    dec_n_layer: int = field(
+    dec_n_layers: int = field(
         default=0, metadata={"help": "# of hidden layers for decoder"})
     dec_nonlinearity: str = field(
         default='', metadata={"help": "type of nonlinearity for decoder"})
@@ -66,9 +66,9 @@ class AdvModelArguments:
         default=False, metadata={"help": "whether to init decoder weights with training set word distributions"})
     latent_noise: float = field(
         default=0.0, metadata={"help": "proportion of dirichlet noise added to the latent vector after softmax"})
-    dis_n_hidden: List[int] = lambda_field(
+    dis_n_hiddens: List[int] = lambda_field(
         default=[128], metadata={"help": "# of hidden units for encoder or list of hiddens for each layer"})
-    dis_n_layer: int = field(
+    dis_n_layers: int = field(
         default=1, metadata={"help": "# of hidden layers for encode"})
     dis_nonlinearity: str = field(
         default='sigmoid', metadata={"help": "type of nonlinearity for discriminator"})

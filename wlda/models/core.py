@@ -7,7 +7,7 @@ NON_LINEARITY = {
     "relu": nn.ReLU,
     "tanh": nn.Tanh,
     "sigmoid": nn.Sigmoid,
-    "hardsigmoid": nn.HardSigmoid,
+    # "hardsigmoid": nn.HardSigmoid, # 1.8.0
     "silu": nn.SiLU,
     "hardswish": nn.Hardswish,
     "elu": nn.ELU,
@@ -36,11 +36,11 @@ class Dense(nn.Linear):
 
     def __init__(self, *args, non_linearity="sigmoid", **kwargs):
         super().__init__(*args, **kwargs)
-        self.activation = NON_LINEARITY.get(non_linearity, nn.Identity)
+        self.activation = NON_LINEARITY.get(non_linearity, nn.Identity)()
 
     def forward(self, x):
         out = super().forward(x)
-        return self.act(out)
+        return self.activation(out)
 
 
 class Net(nn.Module):

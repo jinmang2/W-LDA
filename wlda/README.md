@@ -16,6 +16,7 @@
 - dataclasses
 - scipy
 - nltk
+- scikit-learn
 
 ### Reference design
 - transformers

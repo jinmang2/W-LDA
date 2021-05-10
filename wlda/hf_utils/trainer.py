@@ -54,10 +54,10 @@ class Trainer:
         optimizer: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None):
     ):
         if args is None:
-            args = TrainingArguments(output_dir="tmp_trainer")
+            args = TrainingArguments(output_dir="results")
         self.args = args
         set_seed(self.args.seed)
-        self.data_collator = data_collator # @TODO Default Data Collator 추가
+        self.data_collator = data_collator
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
 
@@ -66,50 +66,13 @@ class Trainer:
         self.compute_metrics = compute_metrics
         self.optimizer, self.lr_scheduler = optimizers
 
-        if (not callable(self.data_collator) and 
-            callable(getattr(self.data_collator, "collate_batch", None))):
-            raise ValueError(
-                "The `data_collator` should be a simple callable (function, class with `__call__`).")
-        
-        # Enforce rules on using datasets with no __len__
-        if train_dataset is not None and not isinstance(train_dataset, collections.abc.Sized) and args.max_steps <= 0:
-            raise ValueError(
-                "train_dataset does not implement __len__, max_steps has to be specified")
-        if eval_dataset is not None and not isinstance(eval_dataset, collections.abc.Sized):
-            raise ValueError("eval_dataset must implement __len__")
-
-        if is_datasets_available():
-            if isinstance(train_dataset, datasets.Dataset):
-                self._remove_unused_columns(
-                    self.train_dataset, description="training")
-            if isinstance(eval_dataset, datasets.Dataset):
-                self._remove_unused_columns(
-                    self.eval_dataset, description="evaluation")
-
         if self.args.label_smoothing_factor != 0:
             self.label_smoother = LabelSmoother(epsilon=self.args.label_smoothing_factor)
         else:
             self.label_smoother = None
 
-        default_label_names = (
-            ["labels"]
-        )
+        default_label_names = (["labels"])
         self.label_names = default_label_names if self.args.label_names is None else self.args.label_names
-
-    def _remove_unused_columns(
-        self, 
-        dataset: "dataset.Dataset", 
-        description: Optional[str]
-    ):
-        if not self.args.remove_unused_columns:
-            return
-        signature = inspect.isgnature(self.model.forward)
-        signature_columns = list(signature.parameters.keys())
-        signature_columns += ["label", "label_ids"]
-        columns = [k for k in signature_columns if k in dataset.column_names]
-        ignore_columns = list(set(dataset.column_names) - set(signature_columns))
-        dset_description = "" if description is None else f"in the {description} set "
-        dataset.set_format(type=dataset.format["type"], columns=columns)
 
     def _get_train_sampler(self) -> Optional[Sampler]: 
         return RandomSampler(self.train_dataset)

@@ -30,21 +30,17 @@ class ReprMixin:
 
 
 class RecordManager:
-    report = {}
-
-    def record(self, slot: str, value: Any):
-        self.report.update({slot: value})
-
-    def update(self, report: Optional[Dict] = None):
-        if report is None:
-            report = self.report
-        for slot, value in report.items():
-            if slot in self.__dataclass_fields__.keys():
-                getattr(self, slot).append(value)
-        self.reset()
-    
     def reset(self):
-        self.report = {}
+        field_names = self.__dataclass_fields__.keys()
+        self.reports = {f_name: 0. for f_name in field_names}
+
+    def update(self, reports: Optional[Dict] = None):
+        if reports is None:
+            reports = self.reports
+        for slot in self.__dataclass_fields__.keys():
+            getattr(self, slot).append(reports.get(slot, None))
+        self.reset()
+
 
 
 @dataclass(repr=False)
@@ -58,16 +54,8 @@ class TrainRecorder(JSONSaveLoadMixin, ReprMixin, RecordManager):
     dirich_avg_entropy: List[float] = field(default_factory=list)
     loss_labeled: List[float] = field(default_factory=list)
 
-    @overrides
-    def record(self, slot: str, value: float):
-        self.report[slot] += value
-
-    @overrides
-    def reset(self):
-        field_names = self.__dataclass_fields__.keys()
-        self.report = {f_name: 0. for f_name in field_names}
-
-    __post_init__ = reset
+    def __post_init__(self):
+        self.reset()
 
 
 @dataclass(repr=False)
@@ -88,13 +76,13 @@ class EvalRecorder(JSONSaveLoadMixin, ReprMixin, RecordManager):
     l_acc_val: List[float] = field(default_factory=list)
     l_acc_test: List[float] = field(default_factory=list)
 
-    @overrides
-    def record(self, slot: str, value: float):
-        self.report[slot] += value
+    def __post_init__(self):
+        self.reset()
 
-    @overrides
-    def reset(self):
-        field_names = self.__dataclass_fields__.keys()
-        self.report = {f_name: 0. for f_name in field_names}
 
-    __post_init__ = reset
+tr = TrainRecorder()
+print(tr)
+tr.update({"loss_reconstruction": 1.2, "loss_discriminator": 1.2})
+print(asdict(tr))
+tr.update({"loss_reconstruction": 1.2, "loss_discriminator": 1.2})
+print(asdict(tr))

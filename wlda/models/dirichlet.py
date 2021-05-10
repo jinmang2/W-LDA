@@ -16,37 +16,30 @@ class Encoder(Net):
     A Neural Network Module Encoder class
     """
 
-    def __init__(
-        self,
-        input_dim : int,
-        n_hidden : Optional[List[int], int] = 64,
-        ndim_y : int = 16,
-        n_layers : int = 1,
-        weights_file : str = "",
-        freeze : bool = False,
-        non_linearity : Optional[str] = None,
-        **kwargs
-    ):
-        super(Encoder, self).__init__(self)
+    def __init__(self, config):
+        super().__init__()
 
-        self.freeze = freeze
-        self.weights_file = weights_file
+        self.freeze = config.enc_freeze
+        self.weights_file = config.enc_weights
 
-        if n_layers >= 0:
-            if isinstance(n_hidden, list):
-                n_hidden = n_hidden[0]
-            n_hidden = n_laers * [n_hidden]
+        if config.enc_n_layers >= 0:
+            if isinstance(config.enc_n_hiddens, list):
+                n_hidden = config.enc_n_hiddens[0]
+            n_hidden = config.enc_n_layers * [n_hidden]
+            n_layers = config.enc_n_layers
         else:
-            n_layers = len(n_hidden)
+            n_hidden = config.enc_n_hiddens
+            n_layers = len(config.enc_n_hiddens)
 
-        n_hidden.insert(0) = input_dim
+        n_hidden.insert(0, config.ndim_x)
 
         main = [
-            Dense(n_hidden[i], n_hidden[i+1], non_linearity=non_linearity)
-            for i in range(len(n_layers))
+            Dense(n_hidden[i], n_hidden[i+1],
+                  non_linearity=config.enc_nonlinearity)
+            for i in range(n_layers)
         ]
-        main.append(Dense(n_hidden[-1], ndim_y, non_linearity=None))
-        self.main = nn.Sequential(main)
+        main.append(Dense(n_hidden[-1], config.ndim_y, non_linearity=None))
+        self.main = nn.Sequential(*main)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.main(x)
@@ -57,70 +50,64 @@ class Decoder(Net):
     A Neural Network Module Decoder class
     """
 
-    def __init__(
-        self,
-        input_dim: int,
-        n_hidden: Optional[List[int], int] = 64,
-        ndim_y: int = 16,
-        n_layers: int = 1,
-        weights_file: str = "",
-        freeze: bool = False,
-        **kwargs
-    ):
-        super(Encoder, self).__init__(self)
+    def __init__(self, config):
+        super().__init__()
 
-        self.freeze = freeze
-        self.weights_file = weights_file
+        self.freeze = config.dec_freeze
+        self.weights_file = config.dec_weights
 
-        self.main = Dense(ndim_y, n_hidden[0], non_linearity=None)
+        if isinstance(config.dec_n_hiddens, list):
+            n_hidden = config.dec_n_hiddens[0]
+        else:
+            n_hidden = config.dec_n_hiddens
+        self.main = Dense(config.ndim_y, n_hidden, non_linearity=None)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.main(x)
 
 
-class Discriminator_y(Net):
-    """
-    A Neural Network Module Disctiminator class
-    Is is similar to Encoder class
-    """
+# class Discriminator_y(Net):
+#     """
+#     A Neural Network Module Disctiminator class
+#     Is is similar to Encoder class
+#     """
 
-    def __init__(
-        self,
-        output_dim: int = 2,
-        n_hidden: Optional[List[int], int] = 64,
-        ndim_y: int = 16,
-        n_layers: int = 1,
-        weights_file: str = "",
-        non_linearity: Optional[str] = None,
-        apply_softmax: bool = False,
-        **kwargs
-    ):
-        super(Encoder, self).__init__(self)
+#     def __init__(
+#         self,
+#         output_dim: int = 2,
+#         n_hidden: Union[List[int], int] = 64,
+#         ndim_y: int = 16,
+#         n_layers: int = 1,
+#         weights_file: str = "",
+#         non_linearity: Optional[str] = None,
+#         apply_softmax: bool = False,
+#     ):
+#         super(Encoder, self).__init__()
 
-        self.weights_file = weights_file
-        self.apply_softmax = apply_softmax
+#         self.weights_file = config.dis_freeze
+#         self.apply_softmax = apply_softmax
 
-        if n_layers >= 0:
-            if isinstance(n_hidden, list):
-                n_hidden = n_hidden[0]
-            n_hidden = n_laers * [n_hidden]
-        else:
-            n_layers = len(n_hidden)
+#         if n_layers >= 0:
+#             if isinstance(n_hidden, list):
+#                 n_hidden = n_hidden[0]
+#             n_hidden = n_layers * [n_hidden]
+#         else:
+#             n_layers = len(n_hidden)
 
-        n_hidden.insert(0) = input_dim
+#         n_hidden.insert(0, input_dim)
 
-        main = [
-            Dense(n_hidden[i], n_hidden[i+1], non_linearity=non_linearity)
-            for i in range(len(n_layers))
-        ]
-        main.append(Dense(n_hidden[-1], ndim_y, non_linearity=None))
-        self.main = nn.Sequential(main)
+#         main = [
+#             Dense(n_hidden[i], n_hidden[i+1], non_linearity=non_linearity)
+#             for i in range(n_layers)
+#         ]
+#         main.append(Dense(n_hidden[-1], ndim_y, non_linearity=None))
+#         self.main = nn.Sequential(main)
 
-    def forward(self, x: torc.Tensor) -> torch.Tensor:
-        logit = self.main(x)
-        if self.apply_softmax:
-            return torch.softmax(logit)
-        return logit
+#     def forward(self, x: torch.Tensor) -> torch.Tensor:
+#         logit = self.main(x)
+#         if self.apply_softmax:
+#             return torch.softmax(logit)
+#         return logit
 
 class WassersteinAutoEncoder(Net):
 
@@ -132,25 +119,20 @@ class WassersteinAutoEncoder(Net):
 
         self.config = config
 
-        if isinstance(config, ModelArguments):
-            config = config.__dict__
-        elif config is None:
-            config = {}
+        if config is None:
+            config = ModelArguments()
         
-        if config.get("input_dim", None) is None:
-            raise AttributeError("`input_dim` is required")
-        
-        self.encoder = Encoder(**config)
-        self.decoder = Decoder(**config)
+        self.encoder = Encoder(config)
+        self.decoder = Decoder(config)
 
-        if config.enc_freeze:
+        if self.encoder.freeze:
             self.encoder.freeze_params()
-        if config.dec_freeze:
+        if self.decoder.freeze:
             self.decoder.freeze_params()
 
     def forward(self, docs: torch.Tensor, enc_out_corrupt: bool = False) -> torch.Tensor:
-        y_onehot_u = self.Encoder(docs)
-        y_onehot_u_softmax = torch.softmax(y_onehot_u)
+        y_onehot_u = self.encoder(docs)
+        y_onehot_u_softmax = torch.softmax(y_onehot_u, dim=-1)
         if enc_out_corrupt and self.training:
             # @TODO: Consifer ``torch.distrubitions.dirichlet.Distribution```
             alpha = self.config.latent_noise
@@ -160,8 +142,5 @@ class WassersteinAutoEncoder(Net):
             y_noise = torch.FLoatTensor(y_noise)
             # Mix-up
             y_onehot_u_softmax = (1 - alpha) * y_onehot_u_softmax + alpha * y_noise
-        x_reconstruction_u = self.Decoder(y_onehot_u_softmax)
+        x_reconstruction_u = self.decoder(y_onehot_u_softmax)
         return x_reconstruction_u
-
-
-

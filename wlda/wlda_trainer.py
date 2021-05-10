@@ -1,5 +1,5 @@
 from overrides import overrides
-from trainer import Trainer
+from .trainer import Trainer
 
 
 def summarization_metrics(pred: EvalPrediction) -> Dict:
@@ -22,5 +22,5 @@ class UnsupervisedTrainer(Trainer):
 
     def compute_loss(self, model, inputs):
         """ computes the mmd loss with information diffusion kernel """
-        
+        pass
 
