@@ -10,6 +10,3 @@
 # from .utils.processor import Processor
 
 from sklearn.feature_extraction.text import CountVectorizer
-
-
-class 

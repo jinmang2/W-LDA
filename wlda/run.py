@@ -21,6 +21,7 @@ from .args import (
 from .record import TrainRecorder, EvalRecorder
 from .wlda_trainer import UnsupervisedTrainer
 
+
 def main():
     """
     5 Steps

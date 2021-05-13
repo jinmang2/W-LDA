@@ -1,3 +1,5 @@
+from abc import ABC
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -29,21 +31,21 @@ NON_LINEARITY = {
 }
 
 
-class Dense(nn.Linear):
+class Dense(nn.Module):
     """
     A Linear class with non-linearity (mxnet style)
     """
 
     def __init__(self, *args, non_linearity="sigmoid", **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__()
+        self.linear = nn.Linear(*args, **kwargs)
         self.activation = NON_LINEARITY.get(non_linearity, nn.Identity)()
 
     def forward(self, x):
-        out = super().forward(x)
-        return self.activation(out)
+        return self.activation(self.linear(x))
 
 
-class Net(nn.Module):
+class Net(nn.Module, ABC):
     """
     A neural network skeleton class.
     This class exists for porting to the ``mx.gluon.HybridBlock``.
@@ -64,6 +66,10 @@ class Net(nn.Module):
     @property
     def device(self):
         return next(self.parameters()).device
+
+    @property
+    def dtype(self):
+        return next(self.parameters()).dtype
 
     def init_weights(self, init_types="xavier_uniform_"):
         if init_types not in self.INIT_TYPES:

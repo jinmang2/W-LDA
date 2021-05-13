@@ -58,6 +58,7 @@ class TrainRecorder(JSONSaveLoadMixin, ReprMixin, RecordManager):
         self.reset()
 
 
+# 얘는 trainer의 metrics 출력용으로 바꿔도... Hmm...
 @dataclass(repr=False)
 class EvalRecorder(JSONSaveLoadMixin, ReprMixin, RecordManager):
     npmi: List[float] = field(default_factory=list)
@@ -78,11 +79,3 @@ class EvalRecorder(JSONSaveLoadMixin, ReprMixin, RecordManager):
 
     def __post_init__(self):
         self.reset()
-
-
-tr = TrainRecorder()
-print(tr)
-tr.update({"loss_reconstruction": 1.2, "loss_discriminator": 1.2})
-print(asdict(tr))
-tr.update({"loss_reconstruction": 1.2, "loss_discriminator": 1.2})
-print(asdict(tr))

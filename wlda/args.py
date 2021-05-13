@@ -11,7 +11,7 @@ from argparse import ArgumentParser, ArgumentTypeError
 from typing import Any, Iterable, List, NewType, Optional, Tuple, Union
 
 
-from .hf_utils import TrainingArguments
+from transformers.training_args import TrainingArguments
 
 
 DataClass = NewType("DataClass", Any)
@@ -82,6 +82,8 @@ class ModelArguments:
         default='', metadata={"help": "weights to train on (default is all weights) -- all others are kept fixed; Ex: E.z_encoder D.decoder"})
     dirich_alpha: float = field(
         default=1e-1, metadata={"help": "param for Dirichlet prior"})
+    kernel_alpha: float = field(
+        default=1.0, metadata={"help": "param for information diffusion kernel"})
     ndim_y: int = field(
         default=256, metadata={"help": "dimensionality of y - topic indicator"})
     ndim_x: int = field(
@@ -118,8 +120,6 @@ class AdvTrainingArguments(TrainingArguments):
         default=1.0, metadata={"help": "param for Dirichlet noise for label"})
     train_mode: str = field(
         default='mmd', metadata={"help": "set to mmd or adv (for GAN)"})
-    kernel_alpha: float = field(
-        default=1.0, metadata={"help": "param for information diffusion kernel"})
     recon_alpha: float = field(
         default=-1.0, metadata={"help": "multiplier of the reconstruction loss when combined with mmd loss"})
     recon_alpha_adapt: float = field(

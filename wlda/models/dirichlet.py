@@ -8,7 +8,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .core import Net, Dense
+from .utils.outputs import WAEOutput
 from ..args import ModelArguments
+
+
+def calc_mean_sum(tensor: torch.Tensor, dim: int=-1):
+    return torch.mean(torch.sum(tensor, dim=-1))
 
 
 class Encoder(Net):
@@ -16,29 +21,29 @@ class Encoder(Net):
     A Neural Network Module Encoder class
     """
 
-    def __init__(self, config):
+    def __init__(self, args):
         super().__init__()
 
-        self.freeze = config.enc_freeze
-        self.weights_file = config.enc_weights
+        self.freeze = args.enc_freeze
+        self.weights_file = args.enc_weights
 
-        if config.enc_n_layers >= 0:
-            if isinstance(config.enc_n_hiddens, list):
-                n_hidden = config.enc_n_hiddens[0]
-            n_hidden = config.enc_n_layers * [n_hidden]
-            n_layers = config.enc_n_layers
+        if args.enc_n_layers >= 0:
+            if isinstance(args.enc_n_hiddens, list):
+                n_hidden = args.enc_n_hiddens[0]
+            n_hidden = args.enc_n_layers * [n_hidden]
+            n_layers = args.enc_n_layers
         else:
-            n_hidden = config.enc_n_hiddens
-            n_layers = len(config.enc_n_hiddens)
+            n_hidden = args.enc_n_hiddens
+            n_layers = len(args.enc_n_hiddens)
 
-        n_hidden.insert(0, config.ndim_x)
+        n_hidden.insert(0, args.ndim_x)
 
         main = [
             Dense(n_hidden[i], n_hidden[i+1],
-                  non_linearity=config.enc_nonlinearity)
+                  non_linearity=args.enc_nonlinearity)
             for i in range(n_layers)
         ]
-        main.append(Dense(n_hidden[-1], config.ndim_y, non_linearity=None))
+        main.append(Dense(n_hidden[-1], args.ndim_y, non_linearity=None))
         self.main = nn.Sequential(*main)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -50,17 +55,17 @@ class Decoder(Net):
     A Neural Network Module Decoder class
     """
 
-    def __init__(self, config):
+    def __init__(self, args):
         super().__init__()
 
-        self.freeze = config.dec_freeze
-        self.weights_file = config.dec_weights
+        self.freeze = args.dec_freeze
+        self.weights_file = args.dec_weights
 
-        if isinstance(config.dec_n_hiddens, list):
-            n_hidden = config.dec_n_hiddens[0]
+        if isinstance(args.dec_n_hiddens, list):
+            n_hidden = args.dec_n_hiddens[0]
         else:
-            n_hidden = config.dec_n_hiddens
-        self.main = Dense(config.ndim_y, n_hidden, non_linearity=None)
+            n_hidden = args.dec_n_hiddens
+        self.main = Dense(args.ndim_y, n_hidden, non_linearity=None)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.main(x)
@@ -84,7 +89,7 @@ class Decoder(Net):
 #     ):
 #         super(Encoder, self).__init__()
 
-#         self.weights_file = config.dis_freeze
+#         self.weights_file = args.dis_freeze
 #         self.apply_softmax = apply_softmax
 
 #         if n_layers >= 0:
@@ -113,34 +118,77 @@ class WassersteinAutoEncoder(Net):
 
     def __init__(
         self,
-        config: Optional[Union[ModelArguments, Dict]] = None,
+        args: Optional[Union[ModelArguments, Dict]] = None,
     ):
         super().__init__()
 
-        self.config = config
-
-        if config is None:
-            config = ModelArguments()
+        if args is None:
+            args = ModelArguments()
+        self.args = args
         
-        self.encoder = Encoder(config)
-        self.decoder = Decoder(config)
+        self.encoder = Encoder(args)
+        self.decoder = Decoder(args)
 
         if self.encoder.freeze:
             self.encoder.freeze_params()
         if self.decoder.freeze:
             self.decoder.freeze_params()
 
-    def forward(self, docs: torch.Tensor, enc_out_corrupt: bool = False) -> torch.Tensor:
+    @property
+    def add_noise(self):
+        if self.training and self.args.latent_noise > 0:
+            return True
+        return False
+
+    def forward(
+        self, 
+        docs: torch.Tensor,
+        eps: float = 1e-10,
+    ) -> WAEOutput:
+        batch_size = docs.shape[0] # batch first
+        y_true = self._sampling_y_over_dirich(batch_size)
         y_onehot_u = self.encoder(docs)
         y_onehot_u_softmax = torch.softmax(y_onehot_u, dim=-1)
-        if enc_out_corrupt and self.training:
-            # @TODO: Consifer ``torch.distrubitions.dirichlet.Distribution```
-            alpha = self.config.latent_noise
-            y_noise = np.random.dirichlet(
-                np.ones(self.config.ndim_y) * self.config.dirich_alpha,
-                size=docs.shape[0])
-            y_noise = torch.FLoatTensor(y_noise)
+        if self.add_noise:
             # Mix-up
+            alpha = self.args.latent_noise
+            y_noise = self._sampling_y_over_dirich(batch_size)
             y_onehot_u_softmax = (1 - alpha) * y_onehot_u_softmax + alpha * y_noise
         x_reconstruction_u = self.decoder(y_onehot_u_softmax)
-        return x_reconstruction_u
+        logits = torch.log_softmax(x_reconstruction_u, dim=-1)
+        # calc reconstructoin loss (CELoss)
+        loss_reconstruction = calc_mean_sum(-docs * logits)
+        # calc l2 regularizer
+        loss_l2_regularizer = calc_mean_sum(y_onehot_u ** 2)
+
+        with torch.no_grad():
+            latent_max = torch.zeros(self.args.ndim_y).to(self.device)
+            latent_max[y_onehot_u.argmax(-1)] += 1
+            latent_max /= batch_size
+
+            latent_entropy = calc_mean_sum(
+                -y_onehot_u_softmax * torch.log(y_onehot_u_softmax + eps)
+            )
+
+            latent_v = torch.mean(y_onehot_u_softmax, axis=0)
+
+            dirich_entropy = calc_mean_sum(
+                -y_true * torch.log(y_true + eps)
+            )
+
+        return WAEOutput(
+            loss_reconstruction=loss_reconstruction,
+            loss_l2_regularizer=loss_l2_regularizer,
+            latent_max=latent_max,
+            latent_entropy=latenr_entropy,
+            latent_v=latent_v,
+            dirich_entropy=dirich_entropy,
+        )
+
+    def _sampling_y_over_dirich(self, batch_size: int = 1):
+        # @TODO: Consider ``torch.distrubitions.dirichlet.Distribution```
+        y = np.random.dirichlet(
+            np.ones(self.args.ndim_y) * self.args.dirich_alpha,
+            size=batch_size,
+        )
+        return torch.tensor(y, dtype=self.dtype, device=self.device)
