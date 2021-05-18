@@ -1,11 +1,25 @@
 import json
 import copy
-from overrides import overrides
+import torch
+import numpy as np
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Union, Any
 
 
-class JSONSaveLoadMixin:
+@dataclass(repr=False)
+class TrainRecorder(JSONSaveLoadMixin, ReprMixin, RecordManager):
+    loss_discriminator: float = field(default=0.0)
+    loss_generator: float = field(default=0.0)
+    loss_reconstruction: float = field(default=0.0)
+    latent_max_distr: Union[np.ndarray, torch.Tensor, float] = field(default=0.0)
+    latent_avg_entropy: float = field(default=0.0)
+    latent_avg: Union[np.ndarray, torch.Tensor, float] = field(default=0.0)
+    dirich_avg_entropy: float = field(default=0.0)
+    loss_labeled: float = field(default=0.0)
+
+    def __post_init__(self):
+        self.reset()
+
     def save_to_json(self, json_path: str):
         json_string = json.dumps(asdict(self), indent=2, sort_keys=True) + "\n"
         with open(json_path, "w", encoding="utf-8") as f:
@@ -17,65 +31,45 @@ class JSONSaveLoadMixin:
             text = f.read()
         return cls(**json.loads(text))
 
-
-class ReprMixin:
     def __repr__(self):
         cls_name = self.__class__.__qualname__
-        FIELDS = self.__dataclass_fields__.values()
+        field_values = self.__dataclass_fields__.values()
         contents = ", ".join(
-            [field.name + ": " + str(field.type).split(".")[-1] 
-            for field in FIELDS]
+            [f_value.name + ": " + str(f_value.type).split(".")[-1]
+             for f_value in field_values]
         )
         return cls_name + "(" + contents + ")"
 
-
-class RecordManager:
     def reset(self):
-        field_names = self.__dataclass_fields__.keys()
-        self.reports = {f_name: 0. for f_name in field_names}
+        for f_name, f_value in self.__dataclass_fields__.items():
+            setattr(self, f_name, f_value.default)
 
-    def update(self, reports: Optional[Dict] = None):
-        if reports is None:
-            reports = self.reports
-        for slot in self.__dataclass_fields__.keys():
-            getattr(self, slot).append(reports.get(slot, None))
-        self.reset()
+    def asdict(self):
+        return asdict(self)
 
 
 
-@dataclass(repr=False)
-class TrainRecorder(JSONSaveLoadMixin, ReprMixin, RecordManager):
-    loss_discriminator: List[float] = field(default_factory=list)
-    loss_generator: List[float] = field(default_factory=list)
-    loss_reconstruction: List[float] = field(default_factory=list)
-    latent_max_distr: List[float] = field(default_factory=list)
-    latent_avg_entropy: List[float] = field(default_factory=list)
-    latent_avg: List[float] = field(default_factory=list)
-    dirich_avg_entropy: List[float] = field(default_factory=list)
-    loss_labeled: List[float] = field(default_factory=list)
-
-    def __post_init__(self):
-        self.reset()
 
 
-# 얘는 trainer의 metrics 출력용으로 바꿔도... Hmm...
-@dataclass(repr=False)
-class EvalRecorder(JSONSaveLoadMixin, ReprMixin, RecordManager):
-    npmi: List[float] = field(default_factory=list)
-    topic_uniqueness: List[float] = field(default_factory=list)
-    top_words: List[float] = field(default_factory=list)
-    npmi2: List[float] = field(default_factory=list)
-    topic_uniqueness2: List[float] = field(default_factory=list)
-    top_words2: List[float] = field(default_factory=list)
-    u_loss_train: List[float] = field(default_factory=list)
-    l_loss_train: List[float] = field(default_factory=list)
-    u_loss_val: List[float] = field(default_factory=list)
-    l_loss_val: List[float] = field(default_factory=list)
-    u_loss_test: List[float] = field(default_factory=list)
-    l_loss_test: List[float] = field(default_factory=list)
-    l_acc_train: List[float] = field(default_factory=list)
-    l_acc_val: List[float] = field(default_factory=list)
-    l_acc_test: List[float] = field(default_factory=list)
 
-    def __post_init__(self):
-        self.reset()
+# # 얘는 trainer의 metrics 출력용으로 바꿔도... Hmm...
+# @dataclass(repr=False)
+# class EvalRecorder(JSONSaveLoadMixin, ReprMixin, RecordManager):
+#     npmi: List[float] = field(default_factory=list)
+#     topic_uniqueness: List[float] = field(default_factory=list)
+#     top_words: List[float] = field(default_factory=list)
+#     npmi2: List[float] = field(default_factory=list)
+#     topic_uniqueness2: List[float] = field(default_factory=list)
+#     top_words2: List[float] = field(default_factory=list)
+#     u_loss_train: List[float] = field(default_factory=list)
+#     l_loss_train: List[float] = field(default_factory=list)
+#     u_loss_val: List[float] = field(default_factory=list)
+#     l_loss_val: List[float] = field(default_factory=list)
+#     u_loss_test: List[float] = field(default_factory=list)
+#     l_loss_test: List[float] = field(default_factory=list)
+#     l_acc_train: List[float] = field(default_factory=list)
+#     l_acc_val: List[float] = field(default_factory=list)
+#     l_acc_test: List[float] = field(default_factory=list)
+
+#     def __post_init__(self):
+#         self.reset()

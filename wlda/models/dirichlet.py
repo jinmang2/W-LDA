@@ -7,16 +7,37 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .core import Net, Dense
+from ..core import ENet, DNet
 from .utils.outputs import WAEOutput
 from ..args import ModelArguments
+from ..utils import NON_LINEARITY
+
+from compute_op import mmd_loss
 
 
-def calc_mean_sum(tensor: torch.Tensor, dim: int=-1):
+def calc_mean_sum(tensor: torch.Tensor, dim: int = -1):
     return torch.mean(torch.sum(tensor, dim=-1))
 
 
-class Encoder(Net):
+def calc_entropy(tensor: torch.Tensor, dim: int = -1, eps: float = 1e-10):
+    return calc_mean_sum(-tensor * torch.log(tensor + eps), dim=dim)
+
+
+class Dense(nn.Module):
+    """
+    A Linear class with non-linearity (mxnet style)
+    """
+
+    def __init__(self, *args, non_linearity="sigmoid", **kwargs):
+        super().__init__()
+        self.linear = nn.Linear(*args, **kwargs)
+        self.activation = NON_LINEARITY.get(non_linearity, nn.Identity)()
+
+    def forward(self, x):
+        return self.activation(self.linear(x))
+
+
+class Encoder(ENet):
     """
     A Neural Network Module Encoder class
     """
@@ -50,7 +71,7 @@ class Encoder(Net):
         return self.main(x)
 
 
-class Decoder(Net):
+class Decoder(DNet):
     """
     A Neural Network Module Decoder class
     """
@@ -69,6 +90,10 @@ class Decoder(Net):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.main(x)
+
+    def y_as_topics(self, eps=1e-10):
+        # main.in_features == ndim_y
+        return torch.eye(self.main.in_features, device=self.device)       
 
 
 # class Discriminator_y(Net):
@@ -135,7 +160,7 @@ class WassersteinAutoEncoder(Net):
             self.decoder.freeze_params()
 
     @property
-    def add_noise(self):
+    def add_noise(self) -> bool:
         if self.training and self.args.latent_noise > 0:
             return True
         return False
@@ -146,7 +171,6 @@ class WassersteinAutoEncoder(Net):
         eps: float = 1e-10,
     ) -> WAEOutput:
         batch_size = docs.shape[0] # batch first
-        y_true = self._sampling_y_over_dirich(batch_size)
         y_onehot_u = self.encoder(docs)
         y_onehot_u_softmax = torch.softmax(y_onehot_u, dim=-1)
         if self.add_noise:
@@ -160,24 +184,25 @@ class WassersteinAutoEncoder(Net):
         loss_reconstruction = calc_mean_sum(-docs * logits)
         # calc l2 regularizer
         loss_l2_regularizer = calc_mean_sum(y_onehot_u ** 2)
+        # calc MMD loss
+        y_true = self._sampling_y_over_dirich(batch_size)
+        y_fake = torch.softmax(self.encoder(docs), dim=-1)
+        loss_discriminator = mmd_loss(y_true, y_fake, t=self.args.kernel_alpha)
 
         with torch.no_grad():
             latent_max = torch.zeros(self.args.ndim_y).to(self.device)
             latent_max[y_onehot_u.argmax(-1)] += 1
             latent_max /= batch_size
 
-            latent_entropy = calc_mean_sum(
-                -y_onehot_u_softmax * torch.log(y_onehot_u_softmax + eps)
-            )
+            latent_entropy = calc_entropy(y_onehot_u_softmax)
 
             latent_v = torch.mean(y_onehot_u_softmax, axis=0)
 
-            dirich_entropy = calc_mean_sum(
-                -y_true * torch.log(y_true + eps)
-            )
+            dirich_entropy = calc_entropy(y_true)
 
         return WAEOutput(
             loss_reconstruction=loss_reconstruction,
+            loss_discriminator=loss_discriminator,
             loss_l2_regularizer=loss_l2_regularizer,
             latent_max=latent_max,
             latent_entropy=latenr_entropy,
@@ -185,10 +210,15 @@ class WassersteinAutoEncoder(Net):
             dirich_entropy=dirich_entropy,
         )
 
-    def _sampling_y_over_dirich(self, batch_size: int = 1):
+    def _sampling_y_over_dirich(
+        self, 
+        batch_size: int = 1,
+        device: Optional[torch.device] = None,
+    ) -> torch.Tensor:
         # @TODO: Consider ``torch.distrubitions.dirichlet.Distribution```
         y = np.random.dirichlet(
             np.ones(self.args.ndim_y) * self.args.dirich_alpha,
             size=batch_size,
         )
-        return torch.tensor(y, dtype=self.dtype, device=self.device)
+        device = device if device is not None else self.device
+        return torch.tensor(y, dtype=self.dtype, device=device)
