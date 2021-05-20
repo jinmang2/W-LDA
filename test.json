@@ -1,0 +1,19 @@
+{
+    "domain": "wikitext-103",
+    "description": "wikitext103_paper",
+    "enc_n_hiddens": [100],
+    "enc_n_layers": -1,
+    "ndim_x": 20000,
+    "ndim_y": 50,
+    "dec_n_hiddens": [20000],
+    "dec_n_layers": -1,
+    "enc_nonlinearity": "softrelu",
+    "kernel_alpha": 1,
+    "output_dir": "results",
+    "cache_dir": "data",
+    "update_enc": true,
+    "adverse": true,
+    "train_mode": "mmd",
+    "train_batch_size": 32,
+    "learning_rate": 0.002
+}
