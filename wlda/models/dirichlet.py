@@ -15,14 +15,6 @@ from ..utils import NON_LINEARITY
 from compute_op import mmd_loss
 
 
-def calc_mean_sum(tensor: torch.Tensor, dim: int = -1):
-    return torch.mean(torch.sum(tensor, dim=-1))
-
-
-def calc_entropy(tensor: torch.Tensor, dim: int = -1, eps: float = 1e-10):
-    return calc_mean_sum(-tensor * torch.log(tensor + eps), dim=dim)
-
-
 class Dense(nn.Module):
     """
     A Linear class with non-linearity (mxnet style)
@@ -180,34 +172,13 @@ class WassersteinAutoEncoder(Net):
             y_onehot_u_softmax = (1 - alpha) * y_onehot_u_softmax + alpha * y_noise
         x_reconstruction_u = self.decoder(y_onehot_u_softmax)
         logits = torch.log_softmax(x_reconstruction_u, dim=-1)
-        # calc reconstructoin loss (CELoss)
-        loss_reconstruction = calc_mean_sum(-docs * logits)
-        # calc l2 regularizer
-        loss_l2_regularizer = calc_mean_sum(y_onehot_u ** 2)
-        # calc MMD loss
-        y_true = self._sampling_y_over_dirich(batch_size)
-        y_fake = torch.softmax(self.encoder(docs), dim=-1)
-        loss_discriminator = mmd_loss(y_true, y_fake, t=self.args.kernel_alpha)
-
-        with torch.no_grad():
-            latent_max = torch.zeros(self.args.ndim_y).to(self.device)
-            latent_max[y_onehot_u.argmax(-1)] += 1
-            latent_max /= batch_size
-
-            latent_entropy = calc_entropy(y_onehot_u_softmax)
-
-            latent_v = torch.mean(y_onehot_u_softmax, axis=0)
-
-            dirich_entropy = calc_entropy(y_true)
+        # Cross Entropy Loss
+        loss_reconstruction = torch.mean(torch.sum(-docs * logits, dim=-1))
 
         return WAEOutput(
             loss_reconstruction=loss_reconstruction,
-            loss_discriminator=loss_discriminator,
-            loss_l2_regularizer=loss_l2_regularizer,
-            latent_max=latent_max,
-            latent_entropy=latenr_entropy,
-            latent_v=latent_v,
-            dirich_entropy=dirich_entropy,
+            doc_topic_vec_before_softmax=y_onehot_u,
+            doc_topic_vec_after_softmax=y_onehot_u_softmax
         )
 
     def _sampling_y_over_dirich(

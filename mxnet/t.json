@@ -1,0 +1,10 @@
+{
+  "dirich_avg_entropy": [],
+  "latent_avg": [],
+  "latent_avg_entropy": [],
+  "latent_max_distr": [],
+  "loss_discriminator": [],
+  "loss_generator": [],
+  "loss_labeled": [],
+  "loss_reconstruction": []
+}

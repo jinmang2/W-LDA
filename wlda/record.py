@@ -16,6 +16,10 @@ class TrainRecorder(JSONSaveLoadMixin, ReprMixin, RecordManager):
     latent_avg: Union[np.ndarray, torch.Tensor, float] = field(default=0.0)
     dirich_avg_entropy: float = field(default=0.0)
     loss_labeled: float = field(default=0.0)
+    discriminator_z_confidence_true: float = field(default=0.0)
+    discriminator_z_confidence_fake: float = field(default=0.0)
+    discriminator_y_confidence_true: float = field(default=0.0)
+    discriminator_y_confidence_fake: float = field(default=0.0)
 
     def __post_init__(self):
         self.reset()
@@ -46,6 +50,12 @@ class TrainRecorder(JSONSaveLoadMixin, ReprMixin, RecordManager):
 
     def asdict(self):
         return asdict(self)
+
+    def update(self, record: Dict[str, Union[float, torch.Tensor]]):
+        for f_name, f_value in self.__dataclass_fields__.items():
+            value = record.get(f_name, None)
+            if value is not None:
+                getattr(self, f_name) += value
 
 
 

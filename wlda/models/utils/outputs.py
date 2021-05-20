@@ -1,12 +1,11 @@
 import torch
-from dataclasses import dataclass
+from typing import Optional
+from dataclasses import dataclass, field, asdict
 
 
 @dataclass
 class WAEOutput:
-    loss_reconstruction: float
-    loss_l2_regularizer: float
-    latent_max: torch.Tensor
-    latent_entropy: float
-    latent_v: torch.Tensor
-    dirich_entropy: float
+    loss_reconstruction: torch.Tensor
+    doc_topic_vec_before_softmax: torch.Tensor
+    doc_topic_vec_after_softmax: torch.Tensor
+    label_ids: Optional[torch.Tensor] = None
