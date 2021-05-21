@@ -1,10 +1,15 @@
 from packaging import version
-from typing import Dict, Any, Tuple, List, Optional, Union
+from typing import Dict, Any, Tuple, List, Optional, Union, NamedTuple, Generator
 import torch
 import numpy as np
 
 from .core import Trainer, Net
 from .callbacks import AdjustReconAlphaCallback
+
+
+class EvalPrediction(NamedTuple):
+    predictions: Union[torch.Tensor, Tuple[torch.Tensor]]
+    label_ids: torch.Tensor
 
 
 def calc_mean_sum(tensor: torch.Tensor, dim: int = -1):
@@ -62,6 +67,7 @@ def mmd_loss(
         sum_xx = (k_xx * off_diag).sum() / (n * (n-1))
         sum_yy = (k_yy * off_diag).sum() / (n * (n-1))
         sum_xy = 2 * k_xy.sum() / (n * x)
+
     return sum_xx + sum_yy - sum_xy
 
 
@@ -70,18 +76,15 @@ class Unsupervised(Compute):
     Unsupervised trainer class to manage training, testing, retrieving outputs.
     """
     
-    def __init__(self, model: Net, discriminator: Net, *args, **kwargs):
+    def __init__(self, model: Net, *args, **kwargs):
         super().__init__(model, *args, **kwargs)
-        self.discriminator = discriminator
-        if self.args.init_type in Net.INIT_TYPES:
-            self.model.init_weights(self.args.init_type)
-            if self.discriminator is not None:
-                self.discriminator.init_weights(self.args.init_type)
         # Use unsupervised callback
         self.add_callback(AdjustReconAlphaCallback)
         self.control = AdjustReconAlphaCallback.on_init_end(
             self.args, self.state, self.control
         )
+        if self.compute_metrics is None:
+            self.compute_metrics = self.test_op
 
     def train_op(
         self, 
@@ -102,13 +105,13 @@ class Unsupervised(Compute):
         
         # Retrain_enc_only vs MMD vs GAN Training
         if self.args.retrain_enc_only:
-            self.model.decoder.freeze_params()
-            self.discriminator.freeze_params()
+            model.decoder.freeze_params()
+            model.discriminator.freeze_params()
             loss = self.retrain_enc(outputs)
         elif self.args.train_mode == "mmd":
             loss = self.unlabeled_train_op_mmd_combine(outputs)
         elif self.args.train_mode == "adv":
-            if self.discriminator is None:
+            if model.discriminator is None:
                 raise NotImplementedError
             loss = self.unlabeled_train_op_adv_combine(outputs)
 
@@ -117,20 +120,20 @@ class Unsupervised(Compute):
     def unlabeled_train_op_mmd_combine(self, outputs: ModelOutputs):
         """ Trains the MMD model """
         # Get reconstruction loss
-        loss_reconstruction = outputs.loss_reconstruction * self.args.recon_alpha
+        loss_reconstruction = outputs.loss * self.args.recon_alpha
 
         # Calc discriminator loss with MMD
-        y_fake = outputs.doc_topic_vec_before_softmax
+        y_fake = outputs.doc_topic_vec
         y_true = outputs.label_ids
         loss_discriminator = mmd_loss(y_true, y_fake, t=self.args.kernel_alpha)
 
         # Calc L2 regularizer
         loss_l2_regularizer = max(calc_mean_sum(y_fake ** 2) * self.args.l2_alpha, 0.0)
 
-        theta_noise = outputs.doc_topic_vec_after_softmax
+        theta_noise = outputs.doc_topic_vec_prob
         with torch.no_grad():
             latent_max = torch.zeros(self.args.ndim_y).to(self.args.device)
-            latent_max[y_onehot_u.argmax(-1)] += 1
+            latent_max[y_fake.argmax(-1)] += 1
             latent_max /= self.args.train_batch_size
 
             latent_entropy = calc_entropy(theta_noise)
@@ -158,12 +161,11 @@ class Unsupervised(Compute):
 
     def unlabeled_train_op_adv_combine(self, outputs: ModelOutputs):
         """ Trains the GAN model """
-        pass
+        raise NotImplementedError
         
-
     def retrain_enc(self, outputs: ModelOutputs):
         """ Re-train the Encoder only """
-        loss_reconstruction = outputs.loss_reconstruction
+        loss_reconstruction = outputs.loss
         theta = outputs.doc_topic_vec_before_softmax
 
         l1_norm = torch.mean(torch.norm(theta, p=1, dim=-1))
@@ -171,22 +173,23 @@ class Unsupervised(Compute):
         return loss_reconstruction + self.args.l2_alpha * l1_norm
 
     def log(self, logs: Dict[str, float]) -> None:
+        """ Log :obj:`logs` on the various objects watching training. """
         if self.state.epoch is not None:
             logs["epoch"] = round(self.state.epoch, 2)
-
+        logs.update(self.state.recorder.asdict())
         self.control = self.callback_handler.on_log(self.args, self.state, self.control, logs)
         outputs = {**logs, **{"step": self.state.global_step}}
-        try:
-            outputs.update(self.state.recorder.asdict())
-        except NameError:
-            pass
         self.state.log_history.append(output)
 
-    def test_op(self):
-        pass
+    def test_op(self, pred: EvalPrediction) -> Dict:
+        """ Evaluates the model. """
+        # Topic Uniqueness
+
+        # NPMI
+
+        # Reconstruction loss
+        pred
 
     def get_outputs(self):
-        pass
-
-    def get_grouped_parameters(self):
-        pass
+        """ Retrieves raw outputs from model. """
+        raise NotImplementedError

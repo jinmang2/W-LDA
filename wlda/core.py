@@ -75,7 +75,7 @@ class Net(nn.Module, metacalss=ABCMeta):
     def dtype(self):
         return next(self.parameters()).dtype
 
-    def init_weights(self, init_types: str = "xavier_uniform_"):
+    def init_weights(self, init_type: str = "xavier_uniform_"):
         if init_types not in self.INIT_TYPES:
             raise AttributeError(f"`init_types` must be in {self.INIT_TYPES}")
         for name, param in self.named_parameters():
@@ -100,6 +100,23 @@ class DNet(Net):
         raise NotImplementedError
 
 
+class AENet(Net, metacalss=ABCMeta):
+    @property
+    @abstractmethod
+    def encoder(self):
+        pass
+
+    @property
+    @abstractmethod
+    def decoder(self):
+        pass
+
+    @property
+    @abstractmethod
+    def discriminator(self):
+        pass
+
+
 # ====================================================================
 # Compute Base Class
 # ====================================================================
@@ -117,7 +134,10 @@ class Compute(Trainer, metaclass=ABCMeta):
         model: nn.Module, 
         inputs: Dict[str, Union[torch.Tensor, Any]]
     ) -> torch.Tensor:
-        """ Combine `train_op` method. """
+        """
+        🤗 :func:`Trainer.compute_loss`.
+        For custom behavior, override it using `train_op` method.
+        """
         loss = self.train_op(self, model, inputs)
         return loss
 
@@ -132,26 +152,81 @@ class Compute(Trainer, metaclass=ABCMeta):
 
     @abstractmethod
     def test_op(self, num_samples=None, num_epochs=None, reset=True, dataset="test") -> ModelOutputs:
-        """ Evaluates the model using num_samples. """
+        """ Evaluates the model. """
         pass
 
     @abstractmethod
     def get_outputs(self, num_samples=None, num_epochs=None, reset=None, dataset="test") -> ModelOutputs:
-        """ Retrieves raw outputs from model for num_samples. """
+        """ Retrieves raw outputs from model. """
         pass
 
-    @abstractmethod
-    def get_grouped_parameters(self) -> Union[List[Dict[str, Union[List[torch.nn.Parameter], Any]]]], None]:
-        pass
+    def get_optimizer_grouped_parameters(self) -> Union[Dict, List[str, List]]:
+        """ Get the optimizer grouped parameters from models. """        
+        # Encoder
+        if self.model.encoder is not None:
+            enc_named_params = self.model.encoder.named_parameters()
+        else:
+            enc_named_params = None
+        # Decoder
+        if self.model.decoder is not None:
+            dec_named_params = self.model.decoder.named_parameters()
+        else:
+            dec_named_params = None
+        # Discriminator
+        if self.model.discriminator is not None:
+            dis_named_params = self.model.discriminator.named_parameters()
+        else:
+            dis_named_params = None
+
+        def get_params(
+            named_params: Optional[
+                Generator[Tuple[str, torch.nn.parameter.Parameter], None, None]
+            ] = None
+        ) -> List[Dict[str, List[torch.nn.parameter.Parameter]]]:
+            no_decay = ["bias", "LayerNorm.weight"]
+            params = []
+            if named_params is not None:
+                params += [
+                    {"params": [p for n, p in named_params if not any(nd in n for nd in no_decay)],
+                    "weight_decay": self.args.weight_decay},
+                    {"params": [p for n, p in named_params if any(nd in n for nd in no_decay)],
+                    "weight_decay": 0.0},
+                ]
+            return params
+
+        return get_params(enc_named_params) + \
+               get_params(dec_named_params) + \
+               get_params(dis_named_params)
+
+    def get_optimizer_kwargs(
+        self,
+        optimizer_cls: torch.optim.Optimizer,
+        optimizer_grouped_parameters: Union[Dict, List[str, List]],
+    ) -> Dict:
+        """ Get the optimizer keyword arguments """
+        optimizer_kwargs = {"lr": self.args.learing_rate}
+        if isinstance(optimizer_cls, torch.optim.Adam):
+            for i, params in enumerate(optimizer_grouped_parameters):
+                if i < 4:
+                    # Only Encoder and Decoder, in-place operation
+                    params.update("betas": (0.99, 0.999))
+        elif isisntance(optimizer_cls, torch.optim.RMSprop):
+            optimizer_kwargs.update({"eps": 1e-10, "alpha": 0.9})
+        
+        return optimizer_kwargs
         
     def create_optimizer_and_scheduler(self, num_training_steps: int):
         """
+        🤗 :func:`Trainer.create_optimizer_and_scheduler`.
         Create optimizer and learning rate scheduler.
         Note that: ``Encoder``, ``Decoder``, ``Discriminator`` are optimized by same algorithms
         such as Adam, Adadelta, RMSprop, and SGD.
+        For custom behavior, override it using :func:`get_optimizer_grouped_parameters` and
+        :func:`get_optimizer_kwargs` method.
         """
-        optimizer_grouped_parameters = self.get_grouped_parameters()
-        if optimizer is None:
+        if self.optimizer is None:
+            # Get grouped parameters
+            optimizer_grouped_parameters = self.get_optimizer_grouped_parameters()
             if optimizer_grouped_parameters is None:
                 no_decay = ["bias", "LayerNorm.weight"]
                 optimizer_grouped_parameters = [
@@ -160,21 +235,14 @@ class Compute(Trainer, metaclass=ABCMeta):
                     {"params": [p for n, p in self.model.named_parameters() if any(nd in n for nd in no_decay)],
                     "weight_decay": 0.0},
                 ]
-            # Optimizer Class
-            if self.args.optimizer == "Adam":
+            # Get optimizer class
+            if self.args.optimizer in ["Adam", "Adadelta", "RMSprop", "SGD"]:
+                optimizer_cls = getattr(optim, self.args.optimizer)
+            else:
                 optimizer_cls = optim.Adam
-                optimizer_kwargs = {
-                    "betas": (self.args.adam_beta1, self.args.adam_beta2).
-                    "eps": self.args.adam_epsilon,
-                }
-            elif self.args.optimizer == "Adadelta":
-                optimizer_cls = optim.Adadelta
-            elif self.args.optimizer == "RMSProp":
-                optimizer_cls = optim.RMSProp
-                optimizer_kwargs = {"eps": 1e-10, "alpha": 0.9}
-            elif self.args.optimizer == "SGD":
-                optimizer_cls = optim.SGD
-            optimizer_kwargs["lr"] = self.args.learning_rate
+            # Get optimizer keyword arguments
+            optimizer_kwargs = self.get_optimizer_kwargs(optimizer_cls, optimizer_grouped_parameters)
+            # Get optimizer using grouped parameters and keyword arguements
             self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
 
         if self.lr_scheduler is None:

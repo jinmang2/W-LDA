@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ..core import ENet, DNet
-from .utils.outputs import WAEOutput
+from .outputs import WAEModelOutput, WAEReconstructionOutput
 from ..args import ModelArguments
 from ..utils import NON_LINEARITY
 
@@ -85,63 +85,25 @@ class Decoder(DNet):
 
     def y_as_topics(self, eps=1e-10):
         # main.in_features == ndim_y
-        return torch.eye(self.main.in_features, device=self.device)       
+        return torch.eye(self.main.in_features, device=self.device)
 
 
-# class Discriminator_y(Net):
-#     """
-#     A Neural Network Module Disctiminator class
-#     Is is similar to Encoder class
-#     """
-
-#     def __init__(
-#         self,
-#         output_dim: int = 2,
-#         n_hidden: Union[List[int], int] = 64,
-#         ndim_y: int = 16,
-#         n_layers: int = 1,
-#         weights_file: str = "",
-#         non_linearity: Optional[str] = None,
-#         apply_softmax: bool = False,
-#     ):
-#         super(Encoder, self).__init__()
-
-#         self.weights_file = args.dis_freeze
-#         self.apply_softmax = apply_softmax
-
-#         if n_layers >= 0:
-#             if isinstance(n_hidden, list):
-#                 n_hidden = n_hidden[0]
-#             n_hidden = n_layers * [n_hidden]
-#         else:
-#             n_layers = len(n_hidden)
-
-#         n_hidden.insert(0, input_dim)
-
-#         main = [
-#             Dense(n_hidden[i], n_hidden[i+1], non_linearity=non_linearity)
-#             for i in range(n_layers)
-#         ]
-#         main.append(Dense(n_hidden[-1], ndim_y, non_linearity=None))
-#         self.main = nn.Sequential(main)
-
-#     def forward(self, x: torch.Tensor) -> torch.Tensor:
-#         logit = self.main(x)
-#         if self.apply_softmax:
-#             return torch.softmax(logit)
-#         return logit
-
-class WassersteinAutoEncoder(Net):
-
-    def __init__(
-        self,
-        args: Optional[Union[ModelArguments, Dict]] = None,
-    ):
-        super().__init__()
-
-        if args is None:
-            args = ModelArguments()
+class WAEInitModel(AENet, metaclass=ABCMeta):
+    def __init__(self, args: ModelArguments):
         self.args = args
+
+    def _init_weights(self, module: Net):
+        if self.args.init_type in self.INIT_TYPES:
+            getattr(module, "init_weights")(self.args.init_type)
+
+
+class WAEModel(WAEInitModel):
+    """
+    Wasserstein Auto Encoder Model
+    """
+
+    def __init__(self, args: ModelArguments):
+        super().__init__(args)
         
         self.encoder = Encoder(args)
         self.decoder = Decoder(args)
@@ -152,6 +114,18 @@ class WassersteinAutoEncoder(Net):
             self.decoder.freeze_params()
 
     @property
+    def encoder(self):
+        return self.encoder
+
+    @property
+    def decoder(self):
+        return self.decoder
+
+    @property
+    def discriminator(self):
+        return None
+
+    @property
     def add_noise(self) -> bool:
         if self.training and self.args.latent_noise > 0:
             return True
@@ -159,26 +133,26 @@ class WassersteinAutoEncoder(Net):
 
     def forward(
         self, 
-        docs: torch.Tensor,
+        input_embeds: torch.Tensor,
         eps: float = 1e-10,
-    ) -> WAEOutput:
+    ) -> WAEModelOutput:
         batch_size = docs.shape[0] # batch first
         y_onehot_u = self.encoder(docs)
         y_onehot_u_softmax = torch.softmax(y_onehot_u, dim=-1)
+
         if self.add_noise:
             # Mix-up
             alpha = self.args.latent_noise
             y_noise = self._sampling_y_over_dirich(batch_size)
             y_onehot_u_softmax = (1 - alpha) * y_onehot_u_softmax + alpha * y_noise
-        x_reconstruction_u = self.decoder(y_onehot_u_softmax)
-        logits = torch.log_softmax(x_reconstruction_u, dim=-1)
-        # Cross Entropy Loss
-        loss_reconstruction = torch.mean(torch.sum(-docs * logits, dim=-1))
 
-        return WAEOutput(
-            loss_reconstruction=loss_reconstruction,
-            doc_topic_vec_before_softmax=y_onehot_u,
-            doc_topic_vec_after_softmax=y_onehot_u_softmax
+        x_reconstruction_u = self.decoder(y_onehot_u_softmax)
+
+        return WAEModelOutput(
+            original_documents=docs,
+            doc_topic_vec=y_onehot_u,
+            doc_topic_vec_prob=y_onehot_u_softmax,
+            reconstructed_documents=x_reconstruction_u,
         )
 
     def _sampling_y_over_dirich(
@@ -193,3 +167,37 @@ class WassersteinAutoEncoder(Net):
         )
         device = device if device is not None else self.device
         return torch.tensor(y, dtype=self.dtype, device=device)
+
+
+class WAEForTopicModeling(WAEInitModel):
+    def __init__(
+        self,
+        args: Optional[Union[ModelArguments, Dict]] = None,
+    ):
+        if args is None:
+            args = ModelArguments()
+        super().__init__(args)
+        self.model = WAEModel(args)
+        self._init_weights(self.model)
+
+    def forward(
+        self, 
+        input_embeds: torch.Tensor,
+        eps: float = 1e-10,
+    ) -> WAELossOutput:
+        outputs = self.model(docs, eps)
+        logits = torch.log_softmax(outputs.reconstructed_documents, dim=-1)
+        # Cross Entropy Loss
+        loss_reconstruction = torch.mean(torch.sum(-docs * logits, dim=-1))
+        return WAEReconstructionOutput(
+            loss=loss_reconstruction,
+            logits=logits,
+            original_documents=outputs.original_documents,
+            doc_topic_vec=outputs.doc_topic_vec,
+            doc_topic_vec_prob=outputs.doc_topic_vec_prob,
+            reconstructed_documents=outputs.reconstructed_documents,
+        )
+
+
+class WAEForLDASynthetic(WAEInitModel):
+    pass

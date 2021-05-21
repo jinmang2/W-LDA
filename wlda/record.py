@@ -21,9 +21,6 @@ class TrainRecorder(JSONSaveLoadMixin, ReprMixin, RecordManager):
     discriminator_y_confidence_true: float = field(default=0.0)
     discriminator_y_confidence_fake: float = field(default=0.0)
 
-    def __post_init__(self):
-        self.reset()
-
     def save_to_json(self, json_path: str):
         json_string = json.dumps(asdict(self), indent=2, sort_keys=True) + "\n"
         with open(json_path, "w", encoding="utf-8") as f:
@@ -43,10 +40,6 @@ class TrainRecorder(JSONSaveLoadMixin, ReprMixin, RecordManager):
              for f_value in field_values]
         )
         return cls_name + "(" + contents + ")"
-
-    def reset(self):
-        for f_name, f_value in self.__dataclass_fields__.items():
-            setattr(self, f_name, f_value.default)
 
     def asdict(self):
         return asdict(self)

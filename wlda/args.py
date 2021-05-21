@@ -88,7 +88,10 @@ class ModelArguments:
         default=256, metadata={"help": "dimensionality of y - topic indicator"})
     ndim_x: int = field(
         default=2, metadata={"help": "dimensionality of p(x) - data distribution"})
-
+    init_type: str = field(
+        default="xavier_normal_", metadata={"help": "model initialization type."})
+    keys_to_ignore_at_inference: List = field(
+        default_factory=[], metadata={"help": ""})
 
 @dataclass
 class AdvTrainingArguments(TrainingArguments):
