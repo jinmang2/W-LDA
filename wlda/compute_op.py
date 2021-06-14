@@ -2,8 +2,10 @@ from packaging import version
 from typing import Dict, Any, Tuple, List, Optional, Union, NamedTuple, Generator
 import torch
 import numpy as np
+from transformers.file_utils import ModelOutput
 
 from .core import Trainer, Net
+from .core import Compute
 from .callbacks import AdjustReconAlphaCallback
 
 
@@ -115,9 +117,9 @@ class Unsupervised(Compute):
                 raise NotImplementedError
             loss = self.unlabeled_train_op_adv_combine(outputs)
 
-        return loss
+        return loss, outputs
 
-    def unlabeled_train_op_mmd_combine(self, outputs: ModelOutputs):
+    def unlabeled_train_op_mmd_combine(self, outputs: ModelOutput):
         """ Trains the MMD model """
         # Get reconstruction loss
         loss_reconstruction = outputs.loss * self.args.recon_alpha
@@ -144,7 +146,7 @@ class Unsupervised(Compute):
         
         # For adjust recon_alpha callback
         if self.args.adverse:
-            loss_mmd_return = loss_mmd.cpu().detach().item()
+            loss_mmd_return = loss_discriminator.cpu().detach().item()
         else:
             loss_mmd_return = 0.0
 
@@ -159,11 +161,11 @@ class Unsupervised(Compute):
 
         return loss_reconstruction + loss_discriminator + loss_l2_regularizer
 
-    def unlabeled_train_op_adv_combine(self, outputs: ModelOutputs):
+    def unlabeled_train_op_adv_combine(self, outputs: ModelOutput):
         """ Trains the GAN model """
         raise NotImplementedError
         
-    def retrain_enc(self, outputs: ModelOutputs):
+    def retrain_enc(self, outputs: ModelOutput):
         """ Re-train the Encoder only """
         loss_reconstruction = outputs.loss
         theta = outputs.doc_topic_vec_before_softmax
@@ -185,7 +187,7 @@ class Unsupervised(Compute):
         """ Evaluates the model. """
         # Topic Uniqueness
 
-        # NPMI
+        # @TODO NPMI
 
         # Reconstruction loss
         pred

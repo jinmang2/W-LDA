@@ -1,4 +1,3 @@
-from dataclasses import dataclass, field, asdict
 from transformers.trainer_callback import TrainerCallback
 from .record import TrainRecorder
 
@@ -16,7 +15,8 @@ class AdjustReconAlphaCallback(TrainerCallback):
 
     def on_evaluate(self, args, state, control, **kwargs):
         if args.recon_alpha_adapt > 0 and state.epoch <= 1.0:
-            args.recon_alpha = state.recorder.loss_discriminator[-1] / \
-                state.recorder.loss_reconstruction[-1]
-            args.recon_alpha = abs(args.recon_alpha) * args.recon_alpha_adapt
-            print("recon_alpha adjusted to {}".format(args.recon_alpha))
+            recon_alpha = args.recon_alpha
+            loss_dis= state.recorder.loss_discriminator[-1]
+            loss_recons = state.recorder.loss_reconstruction[-1]
+            args.recon_alpha = abs(loss_dis / loss_recons) * args.recon_alpha_adapt
+            print("recon_alpha {} adjusted to {}".format(recon_alpha, args.recon_alpha))

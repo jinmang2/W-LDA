@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Union, Any
 
 
 @dataclass(repr=False)
-class TrainRecorder(JSONSaveLoadMixin, ReprMixin, RecordManager):
+class TrainRecorder:
     loss_discriminator: float = field(default=0.0)
     loss_generator: float = field(default=0.0)
     loss_reconstruction: float = field(default=0.0)
@@ -48,31 +48,5 @@ class TrainRecorder(JSONSaveLoadMixin, ReprMixin, RecordManager):
         for f_name, f_value in self.__dataclass_fields__.items():
             value = record.get(f_name, None)
             if value is not None:
-                getattr(self, f_name) += value
-
-
-
-
-
-
-# # 얘는 trainer의 metrics 출력용으로 바꿔도... Hmm...
-# @dataclass(repr=False)
-# class EvalRecorder(JSONSaveLoadMixin, ReprMixin, RecordManager):
-#     npmi: List[float] = field(default_factory=list)
-#     topic_uniqueness: List[float] = field(default_factory=list)
-#     top_words: List[float] = field(default_factory=list)
-#     npmi2: List[float] = field(default_factory=list)
-#     topic_uniqueness2: List[float] = field(default_factory=list)
-#     top_words2: List[float] = field(default_factory=list)
-#     u_loss_train: List[float] = field(default_factory=list)
-#     l_loss_train: List[float] = field(default_factory=list)
-#     u_loss_val: List[float] = field(default_factory=list)
-#     l_loss_val: List[float] = field(default_factory=list)
-#     u_loss_test: List[float] = field(default_factory=list)
-#     l_loss_test: List[float] = field(default_factory=list)
-#     l_acc_train: List[float] = field(default_factory=list)
-#     l_acc_val: List[float] = field(default_factory=list)
-#     l_acc_test: List[float] = field(default_factory=list)
-
-#     def __post_init__(self):
-#         self.reset()
+                old_value = getattr(self, f_name)
+                setattr(self, f_name, old_value + value)

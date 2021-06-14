@@ -10,12 +10,13 @@ import os
 import math
 import collections
 from typing import Optional, List, Dict, Callable, NewType, Tuple, NamedTuple, Union, Any
-from torch.optim import OPtimizer
+from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
 from .args import AdvTrainingArguments
 from .scheduler import get_scheduler
 from transformers import Trainer
-import version
+from .tokenizers import Tokenizer
+from transformers.file_utils import ModelOutput
 
 
 def set_seed(seed: int):
@@ -25,25 +26,36 @@ def set_seed(seed: int):
     torch.cuda.manual_seed_all(seed)
 
 
-if version.parse(torch.__version__) >= version.parse("1.6"):
-    _is_native_amp_available = True
-    from torch.cuda.amp import autocast
-
-
 # ====================================================================
 # Data Class
 # ====================================================================
 
 
-class Data(object):
+class Data(Dataset):
     """
     Data Generator object.
     - awslab에 따르면, main functionality는 ``minibatch``와 
       ``subsampled_labeled_data``라고 함.
     - 그러나 굳이? 현재까진 🤗의 Datasets 라이브러리도 있고 Pytorch의 자체 기능도 있기에
     - `force_reset_data`, `load`, `visualize_series` 등의 메서드만 구현할 예정.
+    - ParlAI를 참고해서 객체만들자!
     """
-    pass
+    def __init__(
+        self,
+        tokenizer: Tokenizer
+    ):
+        self.data = load_dataset(
+            path=path, name=name, cache_dir=cache_dir
+        )
+        
+        
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        pass
+
 
 
 # ====================================================================
@@ -51,7 +63,7 @@ class Data(object):
 # ====================================================================
 
 
-class Net(nn.Module, metacalss=ABCMeta):
+class Net(nn.Module, metaclass=ABCMeta):
     """
     A neural network skeleton class.
     This class exists for porting to the ``mx.gluon.HybridBlock``.
@@ -100,7 +112,7 @@ class DNet(Net):
         raise NotImplementedError
 
 
-class AENet(Net, metacalss=ABCMeta):
+class AENet(Net, metaclass=ABCMeta):
     @property
     @abstractmethod
     def encoder(self):
@@ -138,7 +150,12 @@ class Compute(Trainer, metaclass=ABCMeta):
         🤗 :func:`Trainer.compute_loss`.
         For custom behavior, override it using `train_op` method.
         """
-        loss = self.train_op(self, model, inputs)
+        loss = self.train_op(self, outputs)
+        # Save past state if it exists
+        # TODO: this needs to be fixed and made cleaner later.
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
+
         return loss
 
     @abstractmethod
@@ -146,21 +163,21 @@ class Compute(Trainer, metaclass=ABCMeta):
         self, 
         model: nn.Module, 
         inputs: Dict[str, Union[torch.Tensor, Any]]
-    ) -> ModelOutputs:
+    ) -> torch.Tensor:
         """ How the loss is computed by Trainer. """
         pass
 
     @abstractmethod
-    def test_op(self, num_samples=None, num_epochs=None, reset=True, dataset="test") -> ModelOutputs:
+    def test_op(self, num_samples=None, num_epochs=None, reset=True, dataset="test") -> ModelOutput:
         """ Evaluates the model. """
         pass
 
     @abstractmethod
-    def get_outputs(self, num_samples=None, num_epochs=None, reset=None, dataset="test") -> ModelOutputs:
+    def get_outputs(self, num_samples=None, num_epochs=None, reset=None, dataset="test") -> ModelOutput:
         """ Retrieves raw outputs from model. """
         pass
 
-    def get_optimizer_grouped_parameters(self) -> Union[Dict, List[str, List]]:
+    def get_optimizer_grouped_parameters(self) -> Union[Dict, List[Union[str, List]]]:
         """ Get the optimizer grouped parameters from models. """        
         # Encoder
         if self.model.encoder is not None:
@@ -201,7 +218,7 @@ class Compute(Trainer, metaclass=ABCMeta):
     def get_optimizer_kwargs(
         self,
         optimizer_cls: torch.optim.Optimizer,
-        optimizer_grouped_parameters: Union[Dict, List[str, List]],
+        optimizer_grouped_parameters: Union[Dict, List[Union[str, List]]],
     ) -> Dict:
         """ Get the optimizer keyword arguments """
         optimizer_kwargs = {"lr": self.args.learing_rate}
@@ -209,7 +226,7 @@ class Compute(Trainer, metaclass=ABCMeta):
             for i, params in enumerate(optimizer_grouped_parameters):
                 if i < 4:
                     # Only Encoder and Decoder, in-place operation
-                    params.update("betas": (0.99, 0.999))
+                    params.update({"betas": (0.99, 0.999)})
         elif isisntance(optimizer_cls, torch.optim.RMSprop):
             optimizer_kwargs.update({"eps": 1e-10, "alpha": 0.9})
         

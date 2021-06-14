@@ -136,6 +136,7 @@ class WAEModel(WAEInitModel):
         input_embeds: torch.Tensor,
         eps: float = 1e-10,
     ) -> WAEModelOutput:
+
         batch_size = docs.shape[0] # batch first
         y_onehot_u = self.encoder(docs)
         y_onehot_u_softmax = torch.softmax(y_onehot_u, dim=-1)
@@ -185,10 +186,13 @@ class WAEForTopicModeling(WAEInitModel):
         input_embeds: torch.Tensor,
         eps: float = 1e-10,
     ) -> WAELossOutput:
+
         outputs = self.model(docs, eps)
         logits = torch.log_softmax(outputs.reconstructed_documents, dim=-1)
+
         # Cross Entropy Loss
         loss_reconstruction = torch.mean(torch.sum(-docs * logits, dim=-1))
+        
         return WAEReconstructionOutput(
             loss=loss_reconstruction,
             logits=logits,
