@@ -50,9 +50,9 @@ class ModelArguments:
         default='', metadata={"help": "file path for encoder weights"})
     enc_freeze: bool = field(
         default=False, metadata={"help": "whether to freeze the encoder weights"})
-    latent_nonlinearity: str = lambda_field(
+    latent_nonlinearity: List[int] = lambda_field(
         default=[128], metadata={"help": "type of to use prior to decoder"})
-    dec_n_hiddens: List[int] = field(
+    dec_n_hiddens: int = field(
         default=128, metadata={"help": "# of hidden units for decoder or list of hiddens for each layer"})
     dec_n_layers: int = field(
         default=0, metadata={"help": "# of hidden layers for decoder"})
@@ -82,16 +82,14 @@ class ModelArguments:
         default='', metadata={"help": "weights to train on (default is all weights) -- all others are kept fixed; Ex: E.z_encoder D.decoder"})
     dirich_alpha: float = field(
         default=1e-1, metadata={"help": "param for Dirichlet prior"})
-    kernel_alpha: float = field(
-        default=1.0, metadata={"help": "param for information diffusion kernel"})
     ndim_y: int = field(
         default=256, metadata={"help": "dimensionality of y - topic indicator"})
     ndim_x: int = field(
         default=2, metadata={"help": "dimensionality of p(x) - data distribution"})
     init_type: str = field(
         default="xavier_normal_", metadata={"help": "model initialization type."})
-    keys_to_ignore_at_inference: List = field(
-        default_factory=[], metadata={"help": ""})
+    keys_to_ignore_at_inference: List[str] = lambda_field(
+        default=[], metadata={"help": ""})
 
 @dataclass
 class AdvTrainingArguments(TrainingArguments):
@@ -131,6 +129,8 @@ class AdvTrainingArguments(TrainingArguments):
         default=-1.0, metadata={"help": "dropout probability in encoder"})
     l2_alpha: float = field(
         default=-1.0, metadata={"help": "alpha multipler for L2 regularization on latent vector"})
+    kernel_alpha: float = field(
+        default=1.0, metadata={"help": "param for information diffusion kernel"})
     topic_decoder_weight: bool = field(
         default=False, metadata={"help": "extract topic words based on decoder weights or decoder outputs"})
     retrain_enc_only: bool = field(

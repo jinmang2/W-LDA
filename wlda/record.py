@@ -38,11 +38,21 @@ class TrainRecorder:
         contents = ", ".join(
             [f_value.name + ": " + str(f_value.type).split(".")[-1]
              for f_value in field_values]
-        )
+        ) 
         return cls_name + "(" + contents + ")"
 
     def asdict(self):
-        return asdict(self)
+        """ only record :type:`float` """
+        return {
+            k: v for k, v in asdict(self).items()
+            if self.__dataclass_fields__[k].type in (float, int)
+        }
+
+    def asdict_tensor(self):
+        return {
+            k: v.cpu().tolist() for k, v in asdict(self).items()
+            if not self.__dataclass_fields__[k].type in (float, int)
+        }
 
     def update(self, record: Dict[str, Union[float, torch.Tensor]]):
         for f_name, f_value in self.__dataclass_fields__.items():

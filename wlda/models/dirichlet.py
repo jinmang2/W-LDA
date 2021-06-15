@@ -1,3 +1,4 @@
+from abc import ABCMeta
 from collections import OrderedDict
 from typing import Optional, List, Dict, Union
 
@@ -7,12 +8,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..core import ENet, DNet
-from .outputs import WAEModelOutput, WAEReconstructionOutput
+from ..core import Net, ENet, DNet
+from .modeling_outputs import (
+    WAEModelOutput,
+    WAEReconstructionOutput,
+)
 from ..args import ModelArguments
 from ..utils import NON_LINEARITY
-
-from compute_op import mmd_loss
 
 
 class Dense(nn.Module):
@@ -24,6 +26,9 @@ class Dense(nn.Module):
         super().__init__()
         self.linear = nn.Linear(*args, **kwargs)
         self.activation = NON_LINEARITY.get(non_linearity, nn.Identity)()
+
+    def __getattr__(self, name):
+        return getattr(self.linear, name)
 
     def forward(self, x):
         return self.activation(self.linear(x))
@@ -88,13 +93,18 @@ class Decoder(DNet):
         return torch.eye(self.main.in_features, device=self.device)
 
 
-class WAEInitModel(AENet, metaclass=ABCMeta):
+class WAEInitModel(Net, metaclass=ABCMeta):
     def __init__(self, args: ModelArguments):
+        super().__init__()
         self.args = args
 
     def _init_weights(self, module: Net):
         if self.args.init_type in self.INIT_TYPES:
-            getattr(module, "init_weights")(self.args.init_type)
+            module.init_weights(self.args.init_type)
+
+    @property
+    def discriminator(self):
+        return None
 
 
 class WAEModel(WAEInitModel):
@@ -114,18 +124,6 @@ class WAEModel(WAEInitModel):
             self.decoder.freeze_params()
 
     @property
-    def encoder(self):
-        return self.encoder
-
-    @property
-    def decoder(self):
-        return self.decoder
-
-    @property
-    def discriminator(self):
-        return None
-
-    @property
     def add_noise(self) -> bool:
         if self.training and self.args.latent_noise > 0:
             return True
@@ -136,9 +134,8 @@ class WAEModel(WAEInitModel):
         input_embeds: torch.Tensor,
         eps: float = 1e-10,
     ) -> WAEModelOutput:
-
-        batch_size = docs.shape[0] # batch first
-        y_onehot_u = self.encoder(docs)
+        batch_size = input_embeds.shape[0] # batch first
+        y_onehot_u = self.encoder(input_embeds)
         y_onehot_u_softmax = torch.softmax(y_onehot_u, dim=-1)
 
         if self.add_noise:
@@ -150,7 +147,7 @@ class WAEModel(WAEInitModel):
         x_reconstruction_u = self.decoder(y_onehot_u_softmax)
 
         return WAEModelOutput(
-            original_documents=docs,
+            original_documents=input_embeds,
             doc_topic_vec=y_onehot_u,
             doc_topic_vec_prob=y_onehot_u_softmax,
             reconstructed_documents=x_reconstruction_u,
@@ -181,17 +178,28 @@ class WAEForTopicModeling(WAEInitModel):
         self.model = WAEModel(args)
         self._init_weights(self.model)
 
+    @property
+    def encoder(self) -> Net:
+        return self.model.encoder
+
+    @property
+    def decoder(self) -> Net:
+        return self.model.decoder
+
+    def _sampling_y_over_dirich(self, *args, **kwargs) -> torch.Tensor:
+        return self.model._sampling_y_over_dirich(*args, **kwargs)
+
     def forward(
         self, 
         input_embeds: torch.Tensor,
         eps: float = 1e-10,
-    ) -> WAELossOutput:
+    ) -> WAEReconstructionOutput:
 
-        outputs = self.model(docs, eps)
+        outputs = self.model(input_embeds, eps)
         logits = torch.log_softmax(outputs.reconstructed_documents, dim=-1)
 
         # Cross Entropy Loss
-        loss_reconstruction = torch.mean(torch.sum(-docs * logits, dim=-1))
+        loss_reconstruction = torch.mean(torch.sum(-input_embeds * logits, dim=-1))
         
         return WAEReconstructionOutput(
             loss=loss_reconstruction,

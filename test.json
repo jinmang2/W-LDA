@@ -7,13 +7,18 @@
     "ndim_y": 50,
     "dec_n_hiddens": [20000],
     "dec_n_layers": -1,
-    "enc_nonlinearity": "softrelu",
+    "enc_nonlinearity": "softplus",
     "kernel_alpha": 1,
     "output_dir": "results",
     "cache_dir": "data",
     "update_enc": true,
     "adverse": true,
     "train_mode": "mmd",
-    "train_batch_size": 32,
-    "learning_rate": 0.002
+    "per_device_train_batch_size": 32,
+    "learning_rate": 0.002,
+    "num_train_epochs": 5.0,
+    "logging_first_step": true,
+    "logging_steps": 100,
+    "save_total_limit": 20,
+    "save_steps": 500
 }

@@ -8,6 +8,8 @@ from .core import Trainer, Net
 from .core import Compute
 from .callbacks import AdjustReconAlphaCallback
 
+from .utils import get_topic_words_decoder_weights, calc_topic_uniqueness
+
 
 class EvalPrediction(NamedTuple):
     predictions: Union[torch.Tensor, Tuple[torch.Tensor]]
@@ -66,9 +68,10 @@ def mmd_loss(
         k_xx = diffusion_kernel(torch.clip(xx, 0, 1-eps), t, d-1)
         k_yy = diffusion_kernel(torch.clip(yy, 0, 1-eps), t, d-1)
         k_xy = diffusion_kernel(torch.clip(xy, 0, 1-eps), t, d-1)
+
         sum_xx = (k_xx * off_diag).sum() / (n * (n-1))
         sum_yy = (k_yy * off_diag).sum() / (n * (n-1))
-        sum_xy = 2 * k_xy.sum() / (n * x)
+        sum_xy = 2 * k_xy.sum() / (n * n)
 
     return sum_xx + sum_yy - sum_xy
 
@@ -81,10 +84,7 @@ class Unsupervised(Compute):
     def __init__(self, model: Net, *args, **kwargs):
         super().__init__(model, *args, **kwargs)
         # Use unsupervised callback
-        self.add_callback(AdjustReconAlphaCallback)
-        self.control = AdjustReconAlphaCallback.on_init_end(
-            self.args, self.state, self.control
-        )
+        self.add_callback(AdjustReconAlphaCallback)        
         if self.compute_metrics is None:
             self.compute_metrics = self.test_op
 
@@ -95,10 +95,10 @@ class Unsupervised(Compute):
     ) -> torch.Tensor:
         """ Trains the model using one minibatch of data. """
         outputs = model(**inputs)
-
+        batch_size = outputs.doc_topic_vec.size(0)
         if hasattr(model, "_sampling_y_over_dirich"):
             with torch.no_grad():
-                y_true = model._sampling_y_over_dirich(self.args.train_batch_size)
+                y_true = model._sampling_y_over_dirich(batch_size)
         elif inputs["label_ids"] is not None:
             y_true = inputs["label_ids"]
         else:
@@ -134,14 +134,18 @@ class Unsupervised(Compute):
 
         theta_noise = outputs.doc_topic_vec_prob
         with torch.no_grad():
-            latent_max = torch.zeros(self.args.ndim_y).to(self.args.device)
+            # Latent max
+            latent_max = torch.zeros(self.model.args.ndim_y).to(self.args.device)
             latent_max[y_fake.argmax(-1)] += 1
             latent_max /= self.args.train_batch_size
 
+            # Latent entropy
             latent_entropy = calc_entropy(theta_noise)
 
+            # Latent vector
             latent_v = torch.mean(theta_noise, dim=0)
 
+            # Dirichlet entropy
             dirich_entropy = calc_entropy(y_true)
         
         # For adjust recon_alpha callback
@@ -152,11 +156,11 @@ class Unsupervised(Compute):
 
         self.state.recorder.update({
             "loss_discriminator": loss_mmd_return,
-            "loss_reconstruction": loss_reconstruction,
-            "latent_max_distr": latent_max,
-            "latent_avg_entropy": latent_entropy,
-            "latent_avg": latent_v,
-            "dirich_avg_entropy": dirich_entropy,
+            "loss_reconstruction": loss_reconstruction.detach().item(),
+            "latent_max_distr": latent_max.detach().view(-1),
+            "latent_avg_entropy": latent_entropy.detach().item(),
+            "latent_avg": latent_v.detach().view(-1),
+            "dirich_avg_entropy": dirich_entropy.detach().item(),
         })
 
         return loss_reconstruction + loss_discriminator + loss_l2_regularizer
@@ -181,17 +185,74 @@ class Unsupervised(Compute):
         logs.update(self.state.recorder.asdict())
         self.control = self.callback_handler.on_log(self.args, self.state, self.control, logs)
         outputs = {**logs, **{"step": self.state.global_step}}
-        self.state.log_history.append(output)
+        outputs.update(self.state.recorder.asdict_tensor())
+        self.state.log_history.append(outputs)
 
-    def test_op(self, pred: EvalPrediction) -> Dict:
-        """ Evaluates the model. """
+    def test_op(
+        self,
+        eval_dataset: Optional[Dataset] = None,
+        ignore_keys: Optional[List[str]] = None,
+        metric_key_prefix: str = "eval",
+    ) -> PredictionOutput:
+        """ Evaluates and tests the model. """
+        metrics = {}
         # Topic Uniqueness
+        topic_words = get_topic_words_decoder_weights(
+            self.model.decoder, self.train_dataset, decoder_weights=False
+        )
+        topic_uniqs = calc_topic_uniqueness(topic_words)
+        metrics["Topic Uniqueness"] = np.mean(list(topic_uniqs.values()))
 
-        # @TODO NPMI
+        topic_words = get_topic_words_decoder_weights(
+            self.model.decoder, self.train_dataset, decoder_weights=True
+        )
+        topic_uniqs = calc_topic_uniqueness(topic_words)
+        metrics["Topic Uniqueness2"] = np.mean(list(topic_uniqs.values()))
+
+        # @TODO NPMI, Top Words
 
         # Reconstruction loss
-        pred
+        
+        pass
 
     def get_outputs(self):
         """ Retrieves raw outputs from model. """
         raise NotImplementedError
+
+    def get_optimizer_grouped_parameters(self) -> Union[Dict, List[Union[str, List]]]:
+        """ Get the optimizer grouped parameters from models. """        
+
+        def get_params(module_name: str) -> List[Dict[str, List[torch.nn.parameter.Parameter]]]:
+            module = getattr(self.model, module_name)
+            named_params = module.named_parameters() if module is not None else None
+            no_decay = ["bias", "LayerNorm.weight"]
+            params = []
+            if named_params is not None:
+                params += [
+                    {"params": [p for n, p in named_params if not any(nd in n for nd in no_decay)],
+                    "weight_decay": self.args.weight_decay},
+                    {"params": [p for n, p in named_params if any(nd in n for nd in no_decay)],
+                    "weight_decay": 0.0},
+                ]
+            return params
+
+        return get_params("encoder") + \
+               get_params("decoder") + \
+               get_params("discriminator")
+
+    def get_optimizer_kwargs(
+        self,
+        optimizer_cls: torch.optim.Optimizer,
+        optimizer_grouped_parameters: Union[Dict, List[Union[str, List]]],
+    ) -> Dict:
+        """ Get the optimizer keyword arguments """
+        optimizer_kwargs = super().get_optimizer_kwargs()
+        if isinstance(optimizer_cls, torch.optim.Adam):
+            for i, params in enumerate(optimizer_grouped_parameters):
+                if i < 4:
+                    # Only Encoder and Decoder, in-place operation
+                    params.update({"betas": (0.99, 0.999)})
+        elif isinstance(optimizer_cls, torch.optim.RMSprop):
+            optimizer_kwargs.update({"eps": 1e-10, "alpha": 0.9})
+        
+        return optimizer_kwargs

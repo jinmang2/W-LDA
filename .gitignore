@@ -6,3 +6,6 @@
 /results
 /.vscode
 /.ipynb_checkpoints
+/mlruns
+/runs
+*.ipynb

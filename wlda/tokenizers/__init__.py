@@ -1,4 +1,4 @@
-from .tokenizer import Tokenizer
+from .tokenizer import Tokenizer, Tokens
 from .lemma_tokenizer import LemmaTokenizer
 
 

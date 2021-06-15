@@ -9,15 +9,16 @@ from torch.utils.data.dataloader import DataLoader
 import os
 import math
 import collections
-from typing import Optional, List, Dict, Callable, NewType, Tuple, NamedTuple, Union, Any
+from typing import Optional, List, Dict, Callable, NewType, Tuple, NamedTuple, Union, Any, overload
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
 from .args import AdvTrainingArguments
-from .scheduler import get_scheduler
-from transformers import Trainer
+from transformers import Trainer, get_scheduler
 from .tokenizers import Tokenizer
 from transformers.file_utils import ModelOutput
-
+import scipy.sparse as sparse
+from datasets import load_dataset
+from datasets import Dataset as ArrowDataset
 
 def set_seed(seed: int):
     random.seed(seed)
@@ -42,19 +43,41 @@ class Data(Dataset):
     """
     def __init__(
         self,
-        tokenizer: Tokenizer
+        dataset_or_path: Union[str, ArrowDataset],
+        vocab_path: str,
+        tokenizer: Tokenizer,
+        split: str = "train",
+        encoding: str = "utf-8"
     ):
-        self.data = load_dataset(
-            path=path, name=name, cache_dir=cache_dir
-        )
-        
-        
+        if isinstance(dataset_or_path, str):
+            sparse_data = sp.load_npz(path).todense()
+            self.data = torch.FloatTensor(sparse_data)
+        else:
+            # @TODO vectorize
+            raise NotImplementedError
 
+        # @TODO otherwise case
+        with open(vocab_path, encoding=encoding) as f:
+            vocab = [line.strip("\n") for line in f]
+
+        self.word_to_id = dict(zip(vocab, range(len(vocab))))
+        self.id_to_word = {i: word for word, i in self.word_to_id.items()}
+
+    @classmethod
+    def load_dataset(cls, *args, **kwargs):
+        data = load_dataset(*args, **kwargs)
+        return self(dataset_or_path=data)
+
+    @property
+    def vocab_size(self):
+        return len(self.word_to_id)
+        
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        pass
+        # @TODO text input case
+        return {"input_embeds": self.data[idx]}
 
 
 
@@ -88,14 +111,14 @@ class Net(nn.Module, metaclass=ABCMeta):
         return next(self.parameters()).dtype
 
     def init_weights(self, init_type: str = "xavier_uniform_"):
-        if init_types not in self.INIT_TYPES:
-            raise AttributeError(f"`init_types` must be in {self.INIT_TYPES}")
+        if init_type not in self.INIT_TYPES:
+            raise AttributeError(f"`init_type` must be in {self.INIT_TYPES}")
         for name, param in self.named_parameters():
-            if name in ["bias"]:
+            if "bias" in name:
                 with torch.no_grad():
                     param.zero_()
             else:
-                getattr(torch.nn.init, init_types)(param)
+                getattr(torch.nn.init, init_type)(param)
 
     def freeze_params(self):
         for name, param in self.named_parameters():
@@ -108,25 +131,13 @@ class ENet(Net):
 
 
 class DNet(Net):
-    def forward(self, y: torch.Tensor, z: Optional[torch.Tensor] = None):
+    @overload
+    def forward(self, x: torch.Tensor):
         raise NotImplementedError
 
-
-class AENet(Net, metaclass=ABCMeta):
-    @property
-    @abstractmethod
-    def encoder(self):
-        pass
-
-    @property
-    @abstractmethod
-    def decoder(self):
-        pass
-
-    @property
-    @abstractmethod
-    def discriminator(self):
-        pass
+    @overload
+    def forward(self, y: torch.Tensor, z: Optional[torch.Tensor] = None):
+        raise NotImplementedError
 
 
 # ====================================================================
@@ -139,7 +150,7 @@ class Compute(Trainer, metaclass=ABCMeta):
 
     def __init__(self, *args, **kwargs):
         """ Constructor for Compute. """
-        super(Compute).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def compute_loss(
         self, 
@@ -150,12 +161,11 @@ class Compute(Trainer, metaclass=ABCMeta):
         🤗 :func:`Trainer.compute_loss`.
         For custom behavior, override it using `train_op` method.
         """
-        loss = self.train_op(self, outputs)
+        loss, outputs = self.train_op(model, inputs)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
         if self.args.past_index >= 0:
             self._past = outputs[self.args.past_index]
-
         return loss
 
     @abstractmethod
@@ -167,9 +177,38 @@ class Compute(Trainer, metaclass=ABCMeta):
         """ How the loss is computed by Trainer. """
         pass
 
+    def evaluate(
+        self,
+        eval_dataset: Optional[Dataset] = None,
+        ignore_keys: Optional[List[str]] = None,
+        metric_key_prefix: str = "eval",
+    ) -> Dict[str, float]:
+        """
+        🤗 :func:`Trainer.evaluate`.
+        Run evaluation and returns metrics
+        """
+        output = self.test_op(eval_dataset, ignore_keys, metric_key_prefix)
+        self.log(output.metrics)
+        self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
+        return output.metrics
+
+    def predict(
+        self,
+        test_dataset: Dataset,
+        ignore_keys: Optional[List[str]] = None,
+        metric_key_prefix: str = "eval",
+    ) -> PredictionOutput:
+        output = self.test_op(test_dataset, ignore_keys, metric_key_prefix)
+        return output
+
     @abstractmethod
-    def test_op(self, num_samples=None, num_epochs=None, reset=True, dataset="test") -> ModelOutput:
-        """ Evaluates the model. """
+    def test_op(
+        self,
+        eval_dataset: Optional[Dataset] = None,
+        ignore_keys: Optional[List[str]] = None,
+        metric_key_prefix: str = "eval",
+    ) -> PredictionOutput:
+        """ Evaluates and tests the model. """
         pass
 
     @abstractmethod
@@ -178,58 +217,16 @@ class Compute(Trainer, metaclass=ABCMeta):
         pass
 
     def get_optimizer_grouped_parameters(self) -> Union[Dict, List[Union[str, List]]]:
-        """ Get the optimizer grouped parameters from models. """        
-        # Encoder
-        if self.model.encoder is not None:
-            enc_named_params = self.model.encoder.named_parameters()
-        else:
-            enc_named_params = None
-        # Decoder
-        if self.model.decoder is not None:
-            dec_named_params = self.model.decoder.named_parameters()
-        else:
-            dec_named_params = None
-        # Discriminator
-        if self.model.discriminator is not None:
-            dis_named_params = self.model.discriminator.named_parameters()
-        else:
-            dis_named_params = None
-
-        def get_params(
-            named_params: Optional[
-                Generator[Tuple[str, torch.nn.parameter.Parameter], None, None]
-            ] = None
-        ) -> List[Dict[str, List[torch.nn.parameter.Parameter]]]:
-            no_decay = ["bias", "LayerNorm.weight"]
-            params = []
-            if named_params is not None:
-                params += [
-                    {"params": [p for n, p in named_params if not any(nd in n for nd in no_decay)],
-                    "weight_decay": self.args.weight_decay},
-                    {"params": [p for n, p in named_params if any(nd in n for nd in no_decay)],
-                    "weight_decay": 0.0},
-                ]
-            return params
-
-        return get_params(enc_named_params) + \
-               get_params(dec_named_params) + \
-               get_params(dis_named_params)
+        """ Get the optimizer grouped parameters from models. """
+        return None
 
     def get_optimizer_kwargs(
         self,
-        optimizer_cls: torch.optim.Optimizer,
-        optimizer_grouped_parameters: Union[Dict, List[Union[str, List]]],
+        optimizer_cls: torch.optim.Optimizer = None,
+        optimizer_grouped_parameters: Union[Dict, List[Union[str, List]]] = None,
     ) -> Dict:
         """ Get the optimizer keyword arguments """
-        optimizer_kwargs = {"lr": self.args.learing_rate}
-        if isinstance(optimizer_cls, torch.optim.Adam):
-            for i, params in enumerate(optimizer_grouped_parameters):
-                if i < 4:
-                    # Only Encoder and Decoder, in-place operation
-                    params.update({"betas": (0.99, 0.999)})
-        elif isisntance(optimizer_cls, torch.optim.RMSprop):
-            optimizer_kwargs.update({"eps": 1e-10, "alpha": 0.9})
-        
+        optimizer_kwargs = {"lr": self.args.learning_rate}        
         return optimizer_kwargs
         
     def create_optimizer_and_scheduler(self, num_training_steps: int):
@@ -254,18 +251,18 @@ class Compute(Trainer, metaclass=ABCMeta):
                 ]
             # Get optimizer class
             if self.args.optimizer in ["Adam", "Adadelta", "RMSprop", "SGD"]:
-                optimizer_cls = getattr(optim, self.args.optimizer)
+                optimizer_cls = getattr(torch.optim, self.args.optimizer)
             else:
                 optimizer_cls = optim.Adam
             # Get optimizer keyword arguments
             optimizer_kwargs = self.get_optimizer_kwargs(optimizer_cls, optimizer_grouped_parameters)
             # Get optimizer using grouped parameters and keyword arguements
             self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
-
+        
         if self.lr_scheduler is None:
             self.lr_scheduler = get_scheduler(
                 self.args.lr_scheduler_type,
                 self.optimizer,
-                num_wramup_steps=self.args.num_wramup_steps,
-                num_trainig_steps=num_training_steps,
+                num_warmup_steps=self.args.warmup_steps,
+                num_training_steps=num_training_steps,
             )

@@ -18,8 +18,8 @@ from .args import (
     ModelArguments,
     AdvTrainingArguments
 )
-from .record import TrainRecorder, EvalRecorder
-from .wlda_trainer import UnsupervisedTrainer
+from .record import TrainRecorder
+from .compute_op import Unsupervised
 
 
 def main():
@@ -45,7 +45,7 @@ def main():
     else:
         # read args from shell script or real arguments
         model_args, training_args = parser.parse_args_into_dataclasses()
-
+    
     # ==================================================================
     # Step (2), Check and Prepare arguments for experiments
     # ==================================================================
@@ -59,12 +59,13 @@ def main():
     # ==================================================================
 
     # @TODO ag_news / dbpedia / lda_synthetic / nyt / 20 news / yelp polarity
-    # data = load_dataset(
-    #     path="wikitext.py", 
-    #     name="wikitext-103-v1",
-    #     cache_dir="data/wikitext/"
-    # )
+    data = load_dataset(
+        path="wikitext.py", 
+        name="wikitext-103-v1",
+        cache_dir="data/wikitext/"
+    )
 
+    return data
     # Specify the file locations
     train_path = './data/wikitext/features/wikitext-103_tra.csr.npz'
     test_path = './data/wikitext/features/wikitext-103_test.csr.npz'

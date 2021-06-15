@@ -6,6 +6,8 @@
 import torch
 import torch.nn as nn
 
+import collections
+
 
 NON_LINEARITY = {
     "relu": nn.ReLU,
@@ -21,7 +23,7 @@ NON_LINEARITY = {
     "hardshrink": nn.Hardshrink,
     "leakyrelu": nn.LeakyReLU,
     "logsigmoid": nn.LogSigmoid,
-    "softplus": nn.Softplus,
+    "softplus": nn.Softplus, # softrelu
     "softshrink": nn.Softshrink,
     "prelu": nn.PReLU,
     "softsign": nn.Softsign,
@@ -32,15 +34,17 @@ NON_LINEARITY = {
 }
 
 
-def get_topic_words_decoder_weights(D, data, ctx, k=10, decoder_weights=False):
+def get_topic_words_decoder_weights(D, data, k=10, decoder_weights=False):
     if decoder_weights:
         params = D.weight.data # topic X number of vocabs
     else:
         y = D.y_as_topics()
         params = D(y)
     top_word_ids = torch.argsort(params, dim=-1, descending=True)[:,:k]
-    # @TODO! tokenizer가 필요함! 혹은 tokens to ids method
-    top_word_strings = top_word_ids
+    topic_word_strings = [
+        [data.id_to_word.get(int(w)) for w in topic]
+        for topic in top_word_ids
+    ]
     return top_word_strings
 
 
